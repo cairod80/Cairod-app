@@ -43,6 +43,7 @@ const GOOGLE_MAPS_KEY = typeof process!=="undefined" && process.env ? process.en
 //     "Summarise the following user question in one sentence.",
 //     userQuestionText
 //   );
+// eslint-disable-next-line no-unused-vars
 function buildSafePrompt(systemInstruction, rawUserInput) {
   const cleaned = String(rawUserInput || "").slice(0, 2000); // hard length cap
   return [
@@ -1415,7 +1416,7 @@ function GoogleMapView({items,onOpen}){
     });
 
     return()=>{markers.forEach(m=>m.setMap(null));};
-  },[mapsLoaded,userLoc,items]);
+  },[mapsLoaded,userLoc,items,onOpen]);
 
   // Fallback when no API key is configured yet — shows listing pins as a simple grid with directions
   if(!GOOGLE_MAPS_KEY){
@@ -1555,8 +1556,6 @@ function MainApp({user,onLogout}){
     trackEvent("question_posted",{length:qText.trim().length});
     setQDone(true);
   };
-  const[addForm,setAddForm]=useState({name:"",cat:"food",city:"",desc:"",african:false});
-  const[addDone,setAddDone]=useState(false);
   const[notifOn,setNotifOn]=useState(true);
   const[af1st,setAf1st]=useState(true);
   const[editProfileOpen,setEditProfileOpen]=useState(false);
@@ -1588,7 +1587,6 @@ function MainApp({user,onLogout}){
     setSaved(prev=>{const next=new Set(prev);next.has(id)?next.delete(id):next.add(id);return next;});
   };
   const onOpen=item=>setDetail(item);
-  const setAF=(k,v)=>setAddForm(f=>({...f,[k]:v}));
 
   // F-084 — Nearby Listings Sort: real Haversine distance from user's actual location
   const[userGeo,setUserGeo]=useState(null);
@@ -1617,7 +1615,6 @@ function MainApp({user,onLogout}){
     });
 
   const featured=DATA.filter(l=>l.top).slice(0,3);
-  const savedItems=DATA.filter(l=>saved.has(l.id));
 
   return(
     <div className="app" data-dark={dark}>
@@ -1977,6 +1974,7 @@ export default function App(){
   useEffect(()=>{
     const t=setTimeout(()=>{if(screen==="splash")setScreen("onboard");},2600);
     return()=>clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
   const login=u=>{trackEvent("login_success",{userId:u?.id});setUser(u);setScreen("app");};
