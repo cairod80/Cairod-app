@@ -24,12 +24,43 @@ import { useState, useEffect, useRef } from "react";
 
 const GF="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=Outfit:wght@300;400;500;600;700&display=swap";
 const TELEGRAM_URL="https://t.me/ckairod";
-// Google Maps API key — set in .env as REACT_APP_GOOGLE_MAPS_KEY, domain-restricted to xairod.com
 const GOOGLE_MAPS_KEY = typeof process!=="undefined" && process.env ? process.env.REACT_APP_GOOGLE_MAPS_KEY : "";
 
 // ════════════════════════════════════════════════════════════════════════════
 // SECURITY & HARDENING UTILITIES
+// Real security (Origin checks, strict parsing, input validation) lives in
+// supabase/functions/_shared/security.ts — NOT here.
+// What belongs in React: UX hints only.
 // ════════════════════════════════════════════════════════════════════════════
+
+// HTTPS redirect — cosmetic only, real enforcement is Vercel HSTS header
+// (already set in vercel.json Strict-Transport-Security header)
+if(typeof window!=="undefined" &&
+   window.location.protocol==="http:" &&
+   window.location.hostname!=="localhost" &&
+   window.location.hostname!=="127.0.0.1"){
+  window.location.replace(window.location.href.replace(/^http:/,"https:"));
+}
+
+// UX input hints — not security controls. Real validation is in Edge Functions.
+// These just give users feedback before they hit submit.
+// eslint-disable-next-line no-unused-vars
+function validateInput(type,value){
+  const v=typeof value==="string"?value.trim():value;
+  switch(type){
+    case "question": return(!v||v.length<10)?"Min 10 characters":v.length>1000?"Max 1000 characters":null;
+    case "review":   return(!v||v.length<5)?"Min 5 characters":v.length>2000?"Max 2000 characters":null;
+    case "rating":   return(Number(v)<1||Number(v)>5||!Number.isInteger(Number(v)))?"Rating must be 1–5":null;
+    case "email":    return!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?"Invalid email":null;
+    case "name":     return(!v||v.length<2)?"Min 2 characters":v.length>80?"Max 80 characters":null;
+    case "phone":    return(v&&!/^\+?[\d\s\-().]{7,20}$/.test(v))?"Invalid phone number":null;
+    case "bio":      return(v&&v.length>500)?"Max 500 characters":null;
+    case "password": return(!v||v.length<8)?"Min 8 characters":null;
+    default:         return null;
+  }
+}
+
+
 
 // ── PROMPT INJECTION PROTECTION ──────────────────────────────────────────────
 // Xairod has no AI/LLM feature today. This utility future-proofs any feature
@@ -505,6 +536,103 @@ html,body{height:100%;height:100dvh;font-family:'Outfit',sans-serif;background:#
 .empty{text-align:center;padding:40px 17px;color:var(--sub);}
 .empty .big{font-size:40px;margin-bottom:11px;}
 .page-pad{padding-bottom:24px;}
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE — TABLET & DESKTOP
+   Mobile layout above is untouched. These rules only activate
+   on screens wider than a phone, so the proven mobile experience
+   never changes for the people actually using Xairod day to day.
+   ═══════════════════════════════════════════════════════════════ */
+
+.app-content{display:flex;flex-direction:column;flex:1;min-width:0;overflow:hidden;}
+
+/* ── TABLET (768px+) — wider single column, 2-col listing grid ── */
+@media(min-width:768px){
+  html,body{overflow:auto;}
+  .app{max-width:900px;border-radius:18px;margin:14px auto;height:calc(100dvh - 28px);box-shadow:0 20px 70px rgba(0,0,0,0.35);}
+  .listing-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;align-items:start;}
+  .listing-grid .card{margin-bottom:0;}
+  .hero h1{font-size:30px;}
+  .hero-sub{max-width:420px;}
+
+  /* Modals become centered dialogs instead of bottom sheets */
+  .modal-bg{align-items:center;justify-content:center;padding:24px;}
+  .modal-sheet{border-radius:20px;max-width:560px;max-height:82vh;animation:none;}
+  .edit-modal-bg{align-items:center;justify-content:center;padding:24px;}
+  .edit-modal{border-radius:20px;max-width:480px;max-height:82vh;animation:none;}
+  .modal-handle,.edit-modal-handle{display:none;}
+}
+
+/* ── DESKTOP (1100px+) — sidebar navigation, 3-col listing grid ── */
+@media(min-width:1100px){
+  .app{
+    max-width:1320px;
+    height:calc(100dvh - 40px);
+    margin:20px auto;
+    display:flex;
+    flex-direction:row;
+  }
+  /* Sidebar takes fixed width, full height */
+  .bottom-nav{
+    order:-1;
+    flex-shrink:0;
+    width:252px;
+    height:100%;
+    flex-direction:column;
+    align-items:stretch;
+    justify-content:flex-start;
+    gap:3px;
+    padding:22px 14px 14px;
+    border-top:none;
+    border-right:1px solid var(--bdr);
+    overflow-y:auto;
+  }
+  /* Content area fills remaining space, is itself a column flex */
+  .app-content{
+    flex:1;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    overflow:hidden;
+  }
+  .topbar{flex-shrink:0;padding:18px 32px;}
+  .main-scroll{flex:1;overflow-y:auto;min-height:0;}
+  .notif-panel{top:62px;right:32px;}
+
+  .sidebar-logo{
+    display:flex;align-items:baseline;
+    font-family:'Fraunces',serif;font-size:23px;font-weight:900;
+    padding:8px 12px 26px;letter-spacing:-0.5px;
+  }
+  .sidebar-logo .x{color:var(--g);}
+  .sidebar-logo .d{color:var(--gold);}
+  .nav-btn{
+    flex-direction:row;
+    justify-content:flex-start;
+    align-items:center;
+    gap:13px;
+    padding:12px 14px;
+    border-radius:11px;
+    font-size:14px;
+    width:100%;
+  }
+  .nav-btn:hover{background:var(--sand);}
+  .nav-btn.on{background:var(--g);color:white;}
+  .nav-btn svg,.nav-btn .nav-icon{width:21px;height:21px;font-size:18px;}
+  .nav-btn span{font-size:13.5px;font-weight:600;}
+  .nav-indicator{display:none;}
+
+  .listing-grid{grid-template-columns:repeat(3,1fr);gap:14px;}
+  .hero h1{font-size:34px;}
+  .page-pad{padding-left:6px;padding-right:6px;}
+}
+
+/* ── LARGE DESKTOP (1500px+) — a touch more breathing room ── */
+@media(min-width:1500px){
+  .app{max-width:1480px;}
+  .listing-grid{grid-template-columns:repeat(4,1fr);}
+}
 `;
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -1618,43 +1746,45 @@ function MainApp({user,onLogout}){
 
   return(
     <div className="app" data-dark={dark}>
-      {/* TOPBAR */}
-      <div className="topbar">
-        <div className="logo" onClick={()=>setTab("home")}>
-          <span className="x">X</span>airod<span className="d">.</span>
+      {/* APP CONTENT — topbar + scrollable main, flex:1 at desktop */}
+      <div className="app-content">
+        {/* TOPBAR */}
+        <div className="topbar">
+          <div className="logo" onClick={()=>setTab("home")}>
+            <span className="x">X</span>airod<span className="d">.</span>
+          </div>
+          <div className="top-right">
+            {plan!=="basic"&&(
+              <div style={{fontSize:10,fontWeight:700,color:planInfo?.color,background:`${planInfo?.color}18`,padding:"3px 8px",borderRadius:8}}>
+                {planInfo?.icon} {planInfo?.label}
+              </div>
+            )}
+            <button className="icon-btn" onClick={()=>setNotifOpen(!notifOpen)}>
+              🔔{unread>0&&<span className="notif-dot"/>}
+            </button>
+            <button className="icon-btn" onClick={()=>setDark(!dark)}>{dark?"☀️":"🌙"}</button>
+            {user?.isAdmin&&(
+              <button className="icon-btn" onClick={()=>setTab("admin")} style={{background:tab==="admin"?"var(--g)":"var(--sand)",color:tab==="admin"?"white":"var(--txt)"}}>⚙️</button>
+            )}
+          </div>
         </div>
-        <div className="top-right">
-          {plan!=="basic"&&(
-            <div style={{fontSize:10,fontWeight:700,color:planInfo?.color,background:`${planInfo?.color}18`,padding:"3px 8px",borderRadius:8}}>
-              {planInfo?.icon} {planInfo?.label}
-            </div>
-          )}
-          <button className="icon-btn" onClick={()=>setNotifOpen(!notifOpen)}>
-            🔔{unread>0&&<span className="notif-dot"/>}
-          </button>
-          <button className="icon-btn" onClick={()=>setDark(!dark)}>{dark?"☀️":"🌙"}</button>
-          {user?.isAdmin&&(
-            <button className="icon-btn" onClick={()=>setTab("admin")} style={{background:tab==="admin"?"var(--g)":"var(--sand)",color:tab==="admin"?"white":"var(--txt)"}}>⚙️</button>
-          )}
-        </div>
-      </div>
 
-      {/* NOTIF PANEL */}
-      {notifOpen&&(
-        <div className="notif-panel">
-          <div style={{fontFamily:"'Fraunces',serif",fontSize:14,fontWeight:700,marginBottom:9}}>Notifications</div>
-          {NOTIFS.map(n=>(
-            <div key={n.id} className={`notif-item ${n.n?"new":""}`}>
-              <div className="notif-ico" style={{background:n.bg}}>{n.icon}</div>
-              <div><div className="notif-text">{n.msg}</div><div className="notif-time">{n.t}</div></div>
-            </div>
-          ))}
-          <button onClick={()=>setNotifOpen(false)} style={{width:"100%",background:"none",border:"1px solid var(--bdr)",borderRadius:7,padding:"6px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--sub)",cursor:"pointer",marginTop:3}}>Dismiss</button>
-        </div>
-      )}
+        {/* NOTIF PANEL */}
+        {notifOpen&&(
+          <div className="notif-panel">
+            <div style={{fontFamily:"'Fraunces',serif",fontSize:14,fontWeight:700,marginBottom:9}}>Notifications</div>
+            {NOTIFS.map(n=>(
+              <div key={n.id} className={`notif-item ${n.n?"new":""}`}>
+                <div className="notif-ico" style={{background:n.bg}}>{n.icon}</div>
+                <div><div className="notif-text">{n.msg}</div><div className="notif-time">{n.t}</div></div>
+              </div>
+            ))}
+            <button onClick={()=>setNotifOpen(false)} style={{width:"100%",background:"none",border:"1px solid var(--bdr)",borderRadius:7,padding:"6px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--sub)",cursor:"pointer",marginTop:3}}>Dismiss</button>
+          </div>
+        )}
 
-      {/* SCROLL AREA */}
-      <div className="main-scroll" ref={scrollRef}>
+        {/* SCROLL AREA */}
+        <div className="main-scroll" ref={scrollRef}>
 
         {/* ── HOME ── */}
         {tab==="home"&&(
@@ -1739,7 +1869,9 @@ function MainApp({user,onLogout}){
                 <div className="sec-title">Featured</div>
                 <span className="sec-link" onClick={()=>setTab("explore")}>See all</span>
               </div>
-              {featured.map(item=><Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>)}
+              <div className="listing-grid">
+                {featured.map(item=><Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>)}
+              </div>
             </div>
 
             <div className="section">
@@ -1791,7 +1923,7 @@ function MainApp({user,onLogout}){
             </div>
 
             {viewMode==="list"
-              ?<div style={{padding:"0 17px"}}>
+              ?<div className="listing-grid" style={{padding:"0 17px"}}>
                 {filtered.length===0
                   ?<div className="empty"><div className="big">🔍</div><p>No results found.</p></div>
                   :filtered.map(item=><Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>)
@@ -1951,10 +2083,13 @@ function MainApp({user,onLogout}){
         {modal==="arrive"&&<SheetModal tips={ARRIVE} title="🎓 Student Guide" onClose={()=>setModal(null)}/>}
         {detail&&<DetailModal item={detail} onClose={()=>setDetail(null)} saved={saved.has(detail.id)} onSave={toggleSave}/>}
         {editProfileOpen&&<EditProfileModal user={userProfile||user} onClose={()=>setEditProfileOpen(false)} onSave={u=>{setUserProfile(u);setEditProfileOpen(false);}}/>}
-      </div>
+      </div>{/* end main-scroll */}
+      </div>{/* end app-content */}
 
-      {/* BOTTOM NAV */}
+      {/* NAV — after content in DOM so it sits at bottom on mobile naturally.
+          At desktop width, CSS order:-1 pulls it to the left sidebar position. */}
       <nav className="bottom-nav">
+        <div className="sidebar-logo"><span className="x">X</span>airod<span className="d">.</span></div>
         {NAV.map(n=>(
           <button key={n.id} className={`nav-btn ${tab===n.id?"on":""}`} onClick={()=>{setTab(n.id);setNotifOpen(false);}}>
             {n.icon}{n.label}
