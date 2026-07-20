@@ -2121,13 +2121,22 @@ export default function App(){
   const[screen,setScreen]=useState("loading");
   const[user,setUser]=useState(null);
   useEffect(()=>{
-    supabase.auth.getSession().then(async({data:{session}})=>{
-      if(session?.user){
-        const{data:p}=await supabase.from("profiles").select("*").eq("id",session.user.id).single();
-        setUser({id:session.user.id,email:session.user.email,name:p?.name||session.user.email.split("@")[0],city:p?.city||"Cairo, Egypt",role:p?.role||"Student",bio:p?.bio||"",phone:p?.phone||"",avatarUrl:p?.avatar_url||null,isAdmin:p?.is_admin===true,plan:p?.plan||"basic"});
-        setScreen("app");
-      }else{setScreen("splash");}
-    });
+    const init=async()=>{
+      try{
+        const{data:{session}}=await supabase.auth.getSession();
+        if(session?.user){
+          const{data:p}=await supabase.from("profiles").select("*").eq("id",session.user.id).single();
+          setUser({id:session.user.id,email:session.user.email,name:p?.name||session.user.email.split("@")[0],city:p?.city||"Cairo, Egypt",role:p?.role||"Student",bio:p?.bio||"",phone:p?.phone||"",avatarUrl:p?.avatar_url||null,isAdmin:p?.is_admin===true,plan:p?.plan||"basic"});
+          setScreen("app");
+        }else{
+          setScreen("splash");
+        }
+      }catch(e){
+        // If Supabase is unreachable or env vars missing, fall through to splash
+        setScreen("splash");
+      }
+    };
+    init();
     const{data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
       if(event==="SIGNED_OUT"||!session){setUser(null);setScreen("onboard");}
     });
