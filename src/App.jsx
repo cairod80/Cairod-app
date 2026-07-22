@@ -1,4 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.REACT_APP_SUPABASE_URL,
+  process.env.REACT_APP_SUPABASE_ANON_KEY
+);
 
 // ════════════════════════════════════════════════════════════════════════════
 // XAIROD v6.0 — App.jsx
@@ -1149,15 +1155,18 @@ function Login({onSignup,onSuccess}){
   const[show,setShow]=useState(false);
   const[loading,setLoading]=useState(false);
   const[err,setErr]=useState("");
-  const submit=()=>{
+  const submit=async()=>{
     setErr("");
     if(!email||!pwd){setErr("Please fill in all fields.");return;}
     if(!email.includes("@")){setErr("Enter a valid email.");return;}
     setLoading(true);
-    setTimeout(()=>{
+    try{
+      const{data,error}=await supabase.auth.signInWithPassword({email:email.trim().toLowerCase(),password:pwd});
       setLoading(false);
-      onSuccess({name:email.split("@")[0],email,id:"user1",isAdmin:email.toLowerCase().includes("admin")});
-    },1200);
+      if(error||!data?.user){setErr("Incorrect email or password.");return;}
+      const{data:profile}=await supabase.from("profiles").select("*").eq("id",data.user.id).single();
+      onSuccess({id:data.user.id,email:data.user.email,name:profile?.name||data.user.email.split("@")[0],city:profile?.city||"Cairo, Egypt",role:profile?.role||"Student",bio:profile?.bio||"",phone:profile?.phone||"",avatarUrl:profile?.avatar_url||null,isAdmin:profile?.is_admin===true,plan:profile?.plan||"basic"});
+    }catch(e){setLoading(false);setErr("Something went wrong.");}
   };
   return(
     <div className="auth">
@@ -1193,7 +1202,6 @@ function Login({onSignup,onSuccess}){
         </button>
         <button className="social-btn">📱 Continue with Phone</button>
         <div className="switch-txt">No account? <span onClick={onSignup}>Sign up free</span></div>
-        <div style={{textAlign:"center",marginTop:14,fontSize:10,color:"rgba(254,252,247,0.2)"}}>Tip: use "admin@xairod.com" to access admin panel</div>
       </div>
     </div>
   );
@@ -1207,7 +1215,7 @@ function Signup({onLogin,onBack,onSuccess}){
   const[err,setErr]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const str=pwStrength(form.pwd);
-  const next=()=>{
+  const next=async()=>{
     setErr("");
     if(step===1){
       if(!form.name.trim()){setErr("Enter your name.");return;}
@@ -1219,7 +1227,14 @@ function Signup({onLogin,onBack,onSuccess}){
       if(form.pwd.length<6){setErr("Password must be 6+ characters.");return;}
       if(form.pwd!==form.confirm){setErr("Passwords do not match.");return;}
       setLoading(true);
-      setTimeout(()=>{setLoading(false);onSuccess({name:form.name,email:form.email,id:"user1"});},1200);
+      try{
+        const{data,error}=await supabase.auth.signUp({email:form.email.trim().toLowerCase(),password:form.pwd});
+        if(error){setLoading(false);setErr(error.message.includes("already")?"Account exists. Sign in instead.":"Could not create account. Try again.");return;}
+        if(!data?.user){setLoading(false);setErr("Could not create account.");return;}
+        await supabase.from("profiles").upsert({id:data.user.id,name:form.name.trim(),email:form.email.trim().toLowerCase(),city:form.city,role:form.role,plan:"basic",is_admin:false});
+        setLoading(false);
+        onSuccess({id:data.user.id,email:form.email.trim().toLowerCase(),name:form.name.trim(),city:form.city,role:form.role,isAdmin:false,plan:"basic"});
+      }catch(e){setLoading(false);setErr("Something went wrong. Try again.");}
     }
   };
   return(
@@ -2105,6 +2120,23 @@ function MainApp({user,onLogout}){
 export default function App(){
   const[screen,setScreen]=useState("splash");
   const[user,setUser]=useState(null);
+  useEffect(()=>{
+    // Restore session on reload without blocking the UI
+    supabase.auth.getSession().then(async({data:{session}})=>{
+      if(session?.user){
+        try{
+          const{data:p}=await supabase.from("profiles").select("*").eq("id",session.user.id).single();
+          setUser({id:session.user.id,email:session.user.email,name:p?.name||session.user.email.split("@")[0],city:p?.city||"Cairo, Egypt",role:p?.role||"Student",bio:p?.bio||"",phone:p?.phone||"",avatarUrl:p?.avatar_url||null,isAdmin:p?.is_admin===true,plan:p?.plan||"basic"});
+          setScreen("app");
+        }catch(e){/* profile fetch failed — let user log in manually */}
+      }
+    }).catch(()=>{/* Supabase unreachable — app still runs in demo mode */});
+    const{data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
+      if(event==="SIGNED_OUT"||!session){setUser(null);setScreen("onboard");}
+    });
+    return()=>subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   useEffect(()=>{
     const t=setTimeout(()=>{if(screen==="splash")setScreen("onboard");},2600);
@@ -2113,7 +2145,7 @@ export default function App(){
   },[]);
 
   const login=u=>{trackEvent("login_success",{userId:u?.id});setUser(u);setScreen("app");};
-  const logout=()=>{setUser(null);setScreen("login");};
+  const logout=async()=>{await supabase.auth.signOut();setUser(null);setScreen("onboard");};
 
   return(
     <>
