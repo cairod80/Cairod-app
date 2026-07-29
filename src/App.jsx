@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
-            
+
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
   process.env.REACT_APP_SUPABASE_ANON_KEY
@@ -222,10 +222,72 @@ const QA=[
 ];
 
 const NOTIFS=[
-  {id:"1",icon:"🏢",bg:"rgba(36,113,163,0.15)",msg:"Universal Prime just got a TOP badge!",t:"5m ago",n:true},
-  {id:"2",icon:"🎓",bg:"rgba(142,68,173,0.15)",msg:"New scholarship: Al-Azhar 2026 intake open",t:"1h ago",n:true},
-  {id:"3",icon:"🏠",bg:"rgba(230,126,34,0.15)",msg:"3 new housing listings in Nasr City",t:"2h ago",n:false},
-  {id:"4",icon:"✈️",bg:"rgba(192,57,43,0.15)",msg:"Flight deal: Lagos→Cairo $280 this week!",t:"4h ago",n:false},
+  {id:"1",icon:"🏢",bg:"rgba(36,113,163,0.15)",msg:"Universal Prime just got a TOP badge!",detail:"Universal Prime agency has been verified and awarded the TOP badge. They assist with Al-Azhar, Cairo University and international admissions.",t:"5m ago",n:true},
+  {id:"2",icon:"🎓",bg:"rgba(142,68,173,0.15)",msg:"New scholarship: Al-Azhar 2026 intake open",detail:"Al-Azhar University has opened applications for the 2026 academic year. Full and partial scholarships available for African students. Deadline is 30 September 2026.",t:"1h ago",n:true},
+  {id:"3",icon:"🏠",bg:"rgba(230,126,34,0.15)",msg:"3 new housing listings in Nasr City",detail:"New rooms and flats added in Nasr City. Prices from 2,500 EGP/month. Go to Explore → Housing to view them.",t:"2h ago",n:false},
+  {id:"4",icon:"✈️",bg:"rgba(192,57,43,0.15)",msg:"Flight deal: Lagos→Cairo $280 this week!",detail:"Ethiopian Airlines is offering Lagos to Cairo return flights from $280 this week only. Book before Friday. Check the Travel section for the latest deals.",t:"4h ago",n:false},
+];
+
+// ─── TRANSLATIONS (English / Arabic) ────────────────────────────────────────
+const T={
+  en:{
+    home:"Home",explore:"Explore",tips:"Tips",community:"Community",
+    plans:"Plans",profile:"Profile",groups:"Groups",
+    search:"Search agencies, schools, food…",
+    notifications:"Notifications",dismiss:"Dismiss",
+    language:"ع",seeAll:"See all",categories:"Categories",
+    agencySpot:"Agency Spotlight",featured:"Featured",
+    joinTelegram:"Join our Telegram",joinCommunity:"Join the Xairod Family 🌍",
+    communityDesc:"Ask about agencies, schools, housing and more.",
+    shareTitle:"Xairod — Your Home Away From Home",
+    shareText:"Find African food, trusted agencies and housing in Cairo.",
+    shareBtn:"Share Xairod 🌍",
+    findAgency:"Find Agency",findAgencyDesc:"Verified agencies matched to your university",
+    universities:"Universities",allUniversities:"All Universities",
+    groupsTitle:"Community Groups",joinGroup:"Join",leaveGroup:"Leave",
+    myGroups:"My Groups",exploreGroups:"Explore Groups",
+    notifEmpty:"No notifications yet",
+  },
+  ar:{
+    home:"الرئيسية",explore:"استكشف",tips:"نصائح",community:"المجتمع",
+    plans:"الخطط",profile:"الملف",groups:"المجموعات",
+    search:"ابحث عن وكالات ومدارس وطعام…",
+    notifications:"الإشعارات",dismiss:"إغلاق",
+    language:"EN",seeAll:"عرض الكل",categories:"الفئات",
+    agencySpot:"وكالة مميزة",featured:"مميز",
+    joinTelegram:"انضم إلى تيليغرام",joinCommunity:"انضم إلى عائلة Xairod 🌍",
+    communityDesc:"اسأل عن الوكالات والمدارس والسكن والمزيد.",
+    shareTitle:"Xairod — بيتك بعيداً عن البيت",
+    shareText:"ابحث عن طعام أفريقي ووكالات موثوقة وسكن في القاهرة.",
+    shareBtn:"شارك Xairod 🌍",
+    findAgency:"ابحث عن وكالة",findAgencyDesc:"وكالات موثوقة مطابقة لجامعتك",
+    universities:"الجامعات",allUniversities:"كل الجامعات",
+    groupsTitle:"مجموعات المجتمع",joinGroup:"انضم",leaveGroup:"اخرج",
+    myGroups:"مجموعاتي",exploreGroups:"استكشف المجموعات",
+    notifEmpty:"لا إشعارات بعد",
+  }
+};
+
+// ─── UNIVERSITIES & AGENCY MATCHES ────────────────────────────────────────
+const UNIVERSITIES=[
+  {id:"azhar",name:"Al-Azhar University",name_ar:"جامعة الأزهر",emoji:"🕌",city:"Cairo",country:"Egypt"},
+  {id:"cairo",name:"Cairo University",name_ar:"جامعة القاهرة",emoji:"🏛️",city:"Giza",country:"Egypt"},
+  {id:"ain_shams",name:"Ain Shams University",name_ar:"جامعة عين شمس",emoji:"☀️",city:"Cairo",country:"Egypt"},
+  {id:"msa",name:"MSA University",name_ar:"جامعة MSA",emoji:"🎓",city:"6th October",country:"Egypt"},
+  {id:"istanbul",name:"Istanbul University",name_ar:"جامعة إسطنبول",emoji:"🇹🇷",city:"Istanbul",country:"Turkey"},
+  {id:"malaysia",name:"IIUM Malaysia",name_ar:"الجامعة الإسلامية ماليزيا",emoji:"🇲🇾",city:"Kuala Lumpur",country:"Malaysia"},
+];
+
+// ─── GROUPS ────────────────────────────────────────────────────────────────
+const GROUPS=[
+  {id:"ng",name:"Nigerians in Cairo",name_ar:"النيجيريون في القاهرة",emoji:"🇳🇬",members:247,category:"nationality",joined:false},
+  {id:"gh",name:"Ghanaians in Egypt",name_ar:"الغانيون في مصر",emoji:"🇬🇭",members:89,category:"nationality",joined:false},
+  {id:"et",name:"Ethiopians in Cairo",name_ar:"الإثيوبيون في القاهرة",emoji:"🇪🇹",members:134,category:"nationality",joined:false},
+  {id:"nasr",name:"Nasr City Residents",name_ar:"سكان مدينة نصر",emoji:"🏙️",members:412,category:"city",joined:false},
+  {id:"azhar_s",name:"Al-Azhar Students",name_ar:"طلاب الأزهر",emoji:"🎓",members:876,category:"interest",joined:false},
+  {id:"food",name:"African Foodies Cairo",name_ar:"محبو الطعام الأفريقي",emoji:"🍲",members:203,category:"interest",joined:false},
+  {id:"jobs",name:"Cairo Job Seekers",name_ar:"الباحثون عن عمل",emoji:"💼",members:156,category:"interest",joined:false},
+  {id:"ke",name:"Kenyan Community Egypt",name_ar:"مجتمع الكينيين",emoji:"🇰🇪",members:62,category:"nationality",joined:false},
 ];
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
@@ -1323,6 +1385,7 @@ const NAV=[
   {id:"tips",label:"Tips",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>},
   {id:"community",label:"Community",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>},
   {id:"sub",label:"Plans",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>},
+  {id:"groups",label:"Groups",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.85"/></svg>},
   {id:"profile",label:"Profile",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>},
 ];
 
@@ -1677,6 +1740,10 @@ function MainApp({user,onLogout}){
   const[modal,setModal]=useState(null);
   const[detail,setDetail]=useState(null);
   const[dark,setDark]=useState(false);
+  const[lang,setLang]=useState("en");
+  const[groups,setGroups]=useState(GROUPS);
+  const[notifDetail,setNotifDetail]=useState(null);
+  const t=T[lang];
   const[notifOpen,setNotifOpen]=useState(false);
   const[saved,setSaved]=useState(new Set());
   const[plan,setPlan]=useState("basic");
@@ -1760,7 +1827,7 @@ function MainApp({user,onLogout}){
   const featured=DATA.filter(l=>l.top).slice(0,3);
 
   return(
-    <div className="app" data-dark={dark}>
+    <div className="app" data-dark={dark} dir={lang==="ar"?"rtl":"ltr"} lang={lang}>
       {/* APP CONTENT — topbar + scrollable main, flex:1 at desktop */}
       <div className="app-content">
         {/* TOPBAR */}
@@ -1778,6 +1845,7 @@ function MainApp({user,onLogout}){
               🔔{unread>0&&<span className="notif-dot"/>}
             </button>
             <button className="icon-btn" onClick={()=>setDark(!dark)}>{dark?"☀️":"🌙"}</button>
+            <button className="icon-btn" onClick={()=>setLang(l=>l==="en"?"ar":"en")} style={{fontSize:11,fontWeight:800,minWidth:32,padding:"4px 6px"}}>{t.language}</button>
             {user?.isAdmin&&(
               <button className="icon-btn" onClick={()=>setTab("admin")} style={{background:tab==="admin"?"var(--g)":"var(--sand)",color:tab==="admin"?"white":"var(--txt)"}}>⚙️</button>
             )}
@@ -1787,14 +1855,26 @@ function MainApp({user,onLogout}){
         {/* NOTIF PANEL */}
         {notifOpen&&(
           <div className="notif-panel">
-            <div style={{fontFamily:"'Fraunces',serif",fontSize:14,fontWeight:700,marginBottom:9}}>Notifications</div>
+            <div style={{fontFamily:"'Fraunces',serif",fontSize:14,fontWeight:700,marginBottom:9}}>{t.notifications}</div>
+            {NOTIFS.length===0&&<div style={{fontSize:12,color:"var(--sub)",textAlign:"center",padding:"16px 0"}}>{t.notifEmpty}</div>}
             {NOTIFS.map(n=>(
-              <div key={n.id} className={`notif-item ${n.n?"new":""}`}>
-                <div className="notif-ico" style={{background:n.bg}}>{n.icon}</div>
-                <div><div className="notif-text">{n.msg}</div><div className="notif-time">{n.t}</div></div>
+              <div key={n.id}>
+                <div className={`notif-item ${n.n?"new":""}`} style={{cursor:"pointer"}} onClick={()=>setNotifDetail(notifDetail===n.id?null:n.id)}>
+                  <div className="notif-ico" style={{background:n.bg}}>{n.icon}</div>
+                  <div style={{flex:1}}>
+                    <div className="notif-text">{n.msg}</div>
+                    <div className="notif-time">{n.t}</div>
+                  </div>
+                  <span style={{fontSize:10,color:"var(--sub)",marginLeft:4}}>{notifDetail===n.id?"▲":"▼"}</span>
+                </div>
+                {notifDetail===n.id&&(
+                  <div style={{background:"var(--sand)",borderRadius:"0 0 10px 10px",padding:"10px 12px",fontSize:12,color:"var(--txt)",lineHeight:1.6,marginTop:-4,marginBottom:6,borderLeft:"3px solid var(--g)"}}>
+                    {n.detail}
+                  </div>
+                )}
               </div>
             ))}
-            <button onClick={()=>setNotifOpen(false)} style={{width:"100%",background:"none",border:"1px solid var(--bdr)",borderRadius:7,padding:"6px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--sub)",cursor:"pointer",marginTop:3}}>Dismiss</button>
+            <button onClick={()=>{setNotifOpen(false);setNotifDetail(null);}} style={{width:"100%",background:"none",border:"1px solid var(--bdr)",borderRadius:7,padding:"6px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--sub)",cursor:"pointer",marginTop:3}}>{t.dismiss}</button>
           </div>
         )}
 
@@ -2073,7 +2153,7 @@ function MainApp({user,onLogout}){
                 <button className={`toggle ${af1st?"on":"off"}`} onClick={()=>setAf1st(!af1st)}/>
               </div>
               <div className="settings-title" style={{marginTop:14}}>Account</div>
-              {[["📝","Edit Profile",()=>setEditProfileOpen(true)],["🌍","Change City",()=>setEditProfileOpen(true)],["✈️","Join Telegram Community",()=>{markTelegramJoined();window.open(TELEGRAM_URL,"_blank");}],["📤","Share Xairod",()=>{}],["💬","Send Feedback",()=>{}],["⭐","Rate the App",()=>{}],["🔒","Privacy Policy",()=>window.open("/privacy","_blank")],["📄","Terms & Conditions",()=>window.open("/terms","_blank")]].map(([ic,lb,action],i)=>(
+              {[["📝","Edit Profile",()=>setEditProfileOpen(true)],["🌍","Change City",()=>setEditProfileOpen(true)],["✈️","Join Telegram Community",()=>{markTelegramJoined();window.open(TELEGRAM_URL,"_blank");}],["📤",t.shareBtn,async()=>{if(navigator.share){try{await navigator.share({title:t.shareTitle,text:t.shareText,url:"https://xairod.com"});}catch(e){}}else{try{await navigator.clipboard.writeText("https://xairod.com");alert("xairod.com copied to clipboard!");}catch(e){window.open("https://wa.me/?text="+encodeURIComponent(t.shareText+" https://xairod.com"),"_blank");}}}],["💬","Send Feedback",()=>{}],["⭐","Rate the App",()=>{}],["🔒","Privacy Policy",()=>window.open("/privacy","_blank")],["📄","Terms & Conditions",()=>window.open("/terms","_blank")]].map(([ic,lb,action],i)=>(
                 <div key={i} className="setting-row" style={{cursor:"pointer"}} onClick={action}>
                   <div className="setting-label">{ic}&nbsp;&nbsp;{lb}</div>
                   <span style={{color:"var(--sub)",fontSize:15}}>›</span>
@@ -2092,6 +2172,68 @@ function MainApp({user,onLogout}){
 
         {/* ── ADMIN ── */}
         {tab==="admin"&&<AdminPanel/>}
+
+        {/* ── GROUPS TAB ── */}
+        {tab==="groups"&&(
+          <div className="page-pad">
+            <div style={{padding:"17px 17px 11px"}}>
+              <div style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:700,marginBottom:4}}>{t.groupsTitle}</div>
+              <div style={{fontSize:12,color:"var(--sub)",marginBottom:14}}>{t.groupsDesc||"Connect with Africans by nationality, city or interest"}</div>
+              {["nationality","city","interest"].map(cat=>(
+                <div key={cat} style={{marginBottom:20}}>
+                  <div style={{fontSize:11,fontWeight:800,color:"var(--sub)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{cat}</div>
+                  {groups.filter(g=>g.category===cat).map(g=>(
+                    <div key={g.id} style={{background:"var(--card)",border:"1px solid var(--bdr)",borderRadius:13,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{fontSize:26,flexShrink:0}}>{g.emoji}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:13}}>{lang==="ar"&&g.name_ar?g.name_ar:g.name}</div>
+                        <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>👥 {g.members.toLocaleString()} members</div>
+                      </div>
+                      <button onClick={()=>setGroups(prev=>prev.map(x=>x.id===g.id?{...x,joined:!x.joined,members:x.joined?x.members-1:x.members+1}:x))}
+                        style={{padding:"7px 14px",borderRadius:20,border:"none",background:g.joined?"var(--sand)":"var(--g)",color:g.joined?"var(--sub)":"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",flexShrink:0}}>
+                        {g.joined?t.leaveGroup||"Leave":t.joinGroup||"Join"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── FIND AGENCY (agency-university system) ── */}
+        {tab==="agency"&&(
+          <div className="page-pad">
+            <div style={{padding:"17px 17px 11px"}}>
+              <div style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:700,marginBottom:4}}>{t.findAgency||"Find Agency"}</div>
+              <div style={{fontSize:12,color:"var(--sub)",marginBottom:16}}>{t.findAgencyDesc||"Verified agencies matched to your university"}</div>
+              <div style={{fontSize:11,fontWeight:800,color:"var(--sub)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>{t.universities||"Universities"}</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
+                {UNIVERSITIES.map(u=>(
+                  <button key={u.id} style={{padding:"6px 12px",borderRadius:20,border:"1.5px solid var(--bdr)",background:"var(--card)",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif",color:"var(--txt)"}}>
+                    {u.emoji} {lang==="ar"&&u.name_ar?u.name_ar:u.name}
+                  </button>
+                ))}
+              </div>
+              <div style={{fontSize:11,fontWeight:800,color:"var(--sub)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Verified Agencies</div>
+              {DATA.filter(d=>d.cat==="agency").map(item=>(
+                <div key={item.id} className="card" style={{marginBottom:10,cursor:"pointer"}} onClick={()=>setDetail(item)}>
+                  <div className="card-ico" style={{background:"rgba(36,113,163,0.1)"}}>{item.icon}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:13}}>{item.name}{item.verified&&<span style={{fontSize:10,color:"var(--blue)",marginLeft:4}}>✓</span>}</div>
+                    <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>{item.city}</div>
+                    <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
+                      {UNIVERSITIES.slice(0,3).map(u=>(
+                        <span key={u.id} style={{fontSize:9,background:"rgba(10,107,62,0.1)",color:"var(--g)",padding:"2px 7px",borderRadius:6,fontWeight:600}}>{u.emoji} {u.name.split(" ")[0]}</span>
+                      ))}
+                    </div>
+                  </div>
+                  {item.top&&<span style={{fontSize:9,background:"var(--gold)",color:"white",padding:"2px 7px",borderRadius:4,fontWeight:700,alignSelf:"flex-start"}}>★ TOP</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── MODALS ── */}
         {modal==="avoid"&&<SheetModal tips={AVOID} title="⚠️ What to Avoid" onClose={()=>setModal(null)}/>}
