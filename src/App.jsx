@@ -28,7 +28,7 @@ const supabase = createClient(
 // remain fixed and verified in this version.
 // ════════════════════════════════════════════════════════════════════════════
 
-const GF="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=Outfit:wght@300;400;500;600;700&display=swap";
+const GF="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=Outfit:wght@300;400;500;600;700&family=Cairo:wght@400;600;700;800&display=swap";
 const TELEGRAM_URL="https://t.me/ckairod";
 const GOOGLE_MAPS_KEY = typeof process!=="undefined" && process.env ? process.env.REACT_APP_GOOGLE_MAPS_KEY : "";
 
@@ -1380,7 +1380,7 @@ function Signup({onLogin,onBack,onSuccess}){
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 const NAV=[
-  {id:"home",label:"Home",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>},
+  {id:"home",get label(){return T[window._xairodLang||"en"].home||"Home"},icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>},
   {id:"explore",label:"Explore",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>},
   {id:"tips",label:"Tips",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>},
   {id:"community",label:"Community",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>},
@@ -1743,7 +1743,49 @@ function MainApp({user,onLogout}){
   const[lang,setLang]=useState("en");
   const[groups,setGroups]=useState(GROUPS);
   const[notifDetail,setNotifDetail]=useState(null);
+  const[listings,setListings]=useState(DATA); // starts with mock, replaced by Supabase
+  const[notifications,setNotifications]=useState(NOTIFS); // starts with mock
+  const[qaList,setQaList]=useState(QA);
   const t=T[lang];
+
+  // Load real data from Supabase
+  useEffect(()=>{
+    // Listings
+    supabase.from("listings").select("*").eq("status","active").order("rating",{ascending:false})
+      .then(({data})=>{ if(data&&data.length>0) setListings(data.map(l=>({...l,cat:l.category,rc:l.review_count||0,top:l.top||false,african:l.african_owned||false,icon:"🏢",price:l.price||"$$",verified:l.verified||false,images:l.images||[]}))); });
+    // Groups
+    supabase.from("groups").select("*").order("member_count",{ascending:false})
+      .then(({data})=>{ if(data&&data.length>0) setGroups(data.map(g=>({...g,joined:false}))); });
+    // Community questions
+    supabase.from("community_questions").select("*, profiles(name)").order("created_at",{ascending:false}).limit(20)
+      .then(({data})=>{ if(data&&data.length>0) setQaList(data.map(q=>({id:q.id,q:q.question,a:q.profiles?.name||"Community",r:q.reply_count||0,area:q.category||"general",t:"recent",done:q.answered}))); });
+    // Notifications (if user is logged in - handled separately below)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  // Load and subscribe to real-time notifications
+  useEffect(()=>{
+    if(!user?.id) return;
+    // Load existing notifications
+    supabase.from("notifications").select("*").eq("user_id",user.id).order("created_at",{ascending:false}).limit(20)
+      .then(({data})=>{ if(data&&data.length>0) setNotifications(data.map(n=>({id:n.id,icon:n.icon||"🔔",bg:n.bg_color||"rgba(10,107,62,0.15)",msg:n.message,detail:n.detail||"",t:new Date(n.created_at).toLocaleDateString(),n:!n.is_read}))); });
+    // Subscribe to new notifications in real time
+    const channel=supabase.channel("notifications:"+user.id)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:"user_id=eq."+user.id},
+        payload=>{ setNotifications(prev=>[{id:payload.new.id,icon:payload.new.icon||"🔔",bg:payload.new.bg_color||"rgba(10,107,62,0.15)",msg:payload.new.message,detail:payload.new.detail||"",t:"Just now",n:true},...prev]); }
+      ).subscribe();
+    return()=>supabase.removeChannel(channel);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id]);
+  const NAV_LOCAL=[
+    {id:"home",   label:t.home,      icon:NAV[0].icon},
+    {id:"explore",label:t.explore,   icon:NAV[1].icon},
+    {id:"tips",   label:t.tips,      icon:NAV[2].icon},
+    {id:"community",label:t.community,icon:NAV[3].icon},
+    {id:"groups", label:t.groups,    icon:NAV[4].icon},
+    {id:"sub",    label:t.plans,     icon:NAV[5].icon},
+    {id:"profile",label:t.profile,   icon:NAV[6].icon},
+  ];
   const[notifOpen,setNotifOpen]=useState(false);
   const[saved,setSaved]=useState(new Set());
   const[plan,setPlan]=useState("basic");
@@ -1755,7 +1797,7 @@ function MainApp({user,onLogout}){
   const[qDone,setQDone]=useState(false);
   const[qErr,setQErr]=useState("");
   const qaLimiter=useRef(useRateLimit("post_question",{maxCalls:5,windowMs:300000})).current;
-  const submitQuestion=()=>{
+  const submitQuestion=async()=>{
     if(!qText.trim())return;
     const {allowed,retryInSeconds}=qaLimiter.check();
     if(!allowed){
@@ -1764,6 +1806,10 @@ function MainApp({user,onLogout}){
     }
     setQErr("");
     trackEvent("question_posted",{length:qText.trim().length});
+    if(user?.id){
+      const{error}=await supabase.from("community_questions").insert({user_id:user.id,question:qText.trim(),category:"general"});
+      if(error){setQErr("Failed to post. Please try again.");return;}
+    }
     setQDone(true);
   };
   const[notifOn,setNotifOn]=useState(true);
@@ -1815,7 +1861,7 @@ function MainApp({user,onLogout}){
     return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
   };
 
-  const filtered=DATA
+  const filtered=listings
     .filter(l=>(cat==="all"||l.cat===cat)&&(srch===""||l.name.toLowerCase().includes(srch.toLowerCase())||l.desc.toLowerCase().includes(srch.toLowerCase())))
     .sort((a,b)=>{
       if(srt==="distance"&&userGeo&&a.lat&&b.lat){
@@ -1824,7 +1870,7 @@ function MainApp({user,onLogout}){
       return srt==="rating"?b.rating-a.rating:b.rc-a.rc;
     });
 
-  const featured=DATA.filter(l=>l.top).slice(0,3);
+  const featured=listings.filter(l=>l.top).slice(0,3);
 
   return(
     <div className="app" data-dark={dark} dir={lang==="ar"?"rtl":"ltr"} lang={lang}>
@@ -1856,8 +1902,8 @@ function MainApp({user,onLogout}){
         {notifOpen&&(
           <div className="notif-panel">
             <div style={{fontFamily:"'Fraunces',serif",fontSize:14,fontWeight:700,marginBottom:9}}>{t.notifications}</div>
-            {NOTIFS.length===0&&<div style={{fontSize:12,color:"var(--sub)",textAlign:"center",padding:"16px 0"}}>{t.notifEmpty}</div>}
-            {NOTIFS.map(n=>(
+            {notifications.length===0&&<div style={{fontSize:12,color:"var(--sub)",textAlign:"center",padding:"16px 0"}}>{t.notifEmpty}</div>}
+            {notifications.map(n=>(
               <div key={n.id}>
                 <div className={`notif-item ${n.n?"new":""}`} style={{cursor:"pointer"}} onClick={()=>setNotifDetail(notifDetail===n.id?null:n.id)}>
                   <div className="notif-ico" style={{background:n.bg}}>{n.icon}</div>
@@ -2085,7 +2131,7 @@ function MainApp({user,onLogout}){
                 <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:700}}>Community Q&A</div>
                 <span style={{fontSize:12,color:"var(--g)",fontWeight:600,cursor:"pointer"}}>Filter</span>
               </div>
-              {QA.map(qa=>(
+              {qaList.map(qa=>(
                 <div key={qa.id} className="qa-card">
                   <div className="qa-author">👤 {qa.a}</div>
                   <div className="qa-question">{qa.q}</div>
@@ -2187,9 +2233,17 @@ function MainApp({user,onLogout}){
                       <div style={{fontSize:26,flexShrink:0}}>{g.emoji}</div>
                       <div style={{flex:1}}>
                         <div style={{fontWeight:700,fontSize:13}}>{lang==="ar"&&g.name_ar?g.name_ar:g.name}</div>
-                        <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>👥 {g.members.toLocaleString()} members</div>
+                        <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>👥 {(g.member_count||g.members||0).toLocaleString()} members</div>
                       </div>
-                      <button onClick={()=>setGroups(prev=>prev.map(x=>x.id===g.id?{...x,joined:!x.joined,members:x.joined?x.members-1:x.members+1}:x))}
+                      <button onClick={async()=>{
+                        if(!user?.id){setTab("profile");return;}
+                        if(g.joined){
+                          await supabase.from("group_members").delete().eq("user_id",user.id).eq("group_id",g.id);
+                        }else{
+                          await supabase.from("group_members").insert({user_id:user.id,group_id:g.id});
+                        }
+                        setGroups(prev=>prev.map(x=>x.id===g.id?{...x,joined:!x.joined,member_count:(x.member_count||0)+(x.joined?-1:1)}:x));
+                      }}
                         style={{padding:"7px 14px",borderRadius:20,border:"none",background:g.joined?"var(--sand)":"var(--g)",color:g.joined?"var(--sub)":"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",flexShrink:0}}>
                         {g.joined?t.leaveGroup||"Leave":t.joinGroup||"Join"}
                       </button>
@@ -2247,7 +2301,7 @@ function MainApp({user,onLogout}){
           At desktop width, CSS order:-1 pulls it to the left sidebar position. */}
       <nav className="bottom-nav">
         <div className="sidebar-logo"><span className="x">X</span>airod<span className="d">.</span></div>
-        {NAV.map(n=>(
+        {NAV_LOCAL.map(n=>(
           <button key={n.id} className={`nav-btn ${tab===n.id?"on":""}`} onClick={()=>{setTab(n.id);setNotifOpen(false);}}>
             {n.icon}{n.label}
             <div className="nav-indicator" style={n.id==="sub"&&plan!=="basic"?{opacity:1,background:planInfo?.color}:{}}/>
