@@ -908,15 +908,11 @@ function SheetModal({tips,title,onClose}){
 }
 
 // ─── SUBSCRIPTION PAGE ────────────────────────────────────────────────────────
-function SubPage({plan:currentPlan,onSelect}){
-  const[sel,setSel]=useState(currentPlan||"basic");
-  const[step,setStep]=useState("plans");
-  const[loading,setLoading]=useState(false);
-  const[payErr,setPayErr]=useState("");
-  const p=PLANS.find(x=>x.id===sel);
-  const payLimiter=useRef(useRateLimit("payment_attempt",{maxCalls:5,windowMs:300000})).current;
-
-  const handlePay=()=>{}; // suspended
+function SubPage({onSelect}){
+  // eslint-disable-next-line no-unused-vars
+  const p=PLANS[0];
+  // eslint-disable-next-line no-unused-vars
+  const handlePay=()=>{};
 
   return(
     <div className="page-pad">
@@ -2146,7 +2142,7 @@ function MainApp({user,onLogout}){
         )}
 
         {/* ── PLANS ── */}
-        {tab==="sub"&&<SubPage plan={plan} onSelect={setPlan}/>}
+        {tab==="sub"&&<SubPage onSelect={setPlan}/>}
 
         {/* ── PROFILE ── */}
         {tab==="profile"&&(
