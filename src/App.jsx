@@ -916,109 +916,53 @@ function SubPage({plan:currentPlan,onSelect}){
   const p=PLANS.find(x=>x.id===sel);
   const payLimiter=useRef(useRateLimit("payment_attempt",{maxCalls:5,windowMs:300000})).current;
 
-  const handlePay=()=>{
-    const {allowed,retryInSeconds}=payLimiter.check();
-    if(!allowed){
-      setPayErr(`Too many payment attempts. Please wait ${retryInSeconds}s and try again.`);
-      return;
-    }
-    setPayErr("");
-    trackEvent("plan_upgrade_attempted",{plan:sel,price:p?.price});
-    setLoading(true);
-    setTimeout(()=>{
-      setLoading(false);
-      trackEvent("plan_upgrade_completed",{plan:sel,price:p?.price});
-      setStep("success");
-      onSelect(sel);
-    },1800);
-  };
+  const handlePay=()=>{}; // suspended
 
   return(
     <div className="page-pad">
       <div style={{padding:"20px 17px 14px"}}>
-        <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:900,marginBottom:4}}>
-          {step==="plans"?"Choose Your Plan":step==="payment"?"Complete Payment":"You're all set! 🎉"}
-        </div>
-        <div style={{fontSize:13,color:"var(--sub)",marginBottom:16}}>
-          {step==="plans"?"Unlock more features and visibility":step==="payment"?`${p?.label} · $${p?.price}/month`:"Your new plan is now active"}
-        </div>
+        <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:900,marginBottom:4}}>Subscription Plans</div>
+        <div style={{fontSize:13,color:"var(--sub)",marginBottom:16}}>Unlock more features and visibility</div>
       </div>
 
-      {step==="plans"&&(
-        <div style={{padding:"0 17px"}}>
-          {PLANS.map(pl=>(
-            <div key={pl.id} className={`plan-card ${sel===pl.id?"selected":""}`}
-              onClick={()=>setSel(pl.id)}
-              style={{borderColor:sel===pl.id?pl.color:"var(--bdr)",background:sel===pl.id?`${pl.color}08`:"var(--card)"}}>
-              {pl.id==="business"&&<span className="popular-tag">POPULAR</span>}
-              {pl.id==="agency"&&<span className="popular-tag" style={{background:"var(--blue)"}}>FOR AGENCIES</span>}
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                <div>
-                  <div className="plan-name">{pl.icon} {pl.label}</div>
-                  <div style={{marginTop:2}}>
-                    <span className="plan-price" style={{color:pl.color}}>{pl.price===0?"Free":`$${pl.price}`}</span>
-                    <span style={{fontSize:11,color:"var(--sub)"}}> {pl.period}</span>
-                  </div>
+      {/* Plans preview — display only, no payment */}
+      <div style={{padding:"0 17px"}}>
+        {PLANS.map(pl=>(
+          <div key={pl.id} className="plan-card" style={{borderColor:pl.color+"44",background:pl.id==="business"?pl.color+"08":"var(--card)",opacity:pl.id==="basic"?1:0.85}}>
+            {pl.id==="business"&&<span className="popular-tag">POPULAR</span>}
+            {pl.id==="agency"&&<span className="popular-tag" style={{background:"var(--blue)"}}>FOR AGENCIES</span>}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <div>
+                <div className="plan-name">{pl.icon} {pl.label}</div>
+                <div style={{marginTop:2}}>
+                  <span className="plan-price" style={{color:pl.color}}>{pl.price===0?"Free":`$${pl.price}`}</span>
+                  <span style={{fontSize:11,color:"var(--sub)"}}> {pl.period}</span>
                 </div>
-                <div style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${sel===pl.id?pl.color:"var(--bdr)"}`,background:sel===pl.id?pl.color:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  {sel===pl.id&&<span style={{color:"white",fontSize:11,fontWeight:700}}>✓</span>}
-                </div>
-              </div>
-              <div className="plan-features">
-                {pl.feats.map((f,i)=><div key={i} className="plan-feature" style={{color:sel===pl.id?"var(--txt)":"var(--sub)"}}>{f}</div>)}
               </div>
             </div>
-          ))}
-          {sel!=="basic"
-            ?<button className="form-submit" style={{background:p?.color,marginBottom:8}} onClick={()=>setStep("payment")}>Continue with {p?.label} →</button>
-            :<button className="form-submit" style={{background:"var(--sub)"}} onClick={()=>onSelect("basic")}>Continue Free</button>
-          }
-          <div style={{fontSize:11,color:"var(--sub)",textAlign:"center",marginTop:8}}>
-            Cancel anytime · No hidden fees · See our{" "}
-            <a href="/terms" target="_blank" rel="noopener noreferrer" style={{color:"var(--g)",fontWeight:600}}>Terms & Refund Policy</a>
+            <div className="plan-features">
+              {pl.feats.map((f,i)=><div key={i} className="plan-feature">{f}</div>)}
+            </div>
           </div>
-        </div>
-      )}
+        ))}
 
-      {step==="payment"&&(
-        <div style={{padding:"0 17px"}}>
-          <div style={{background:`${p?.color}10`,border:`1px solid ${p?.color}30`,borderRadius:12,padding:13,marginBottom:18,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div><div style={{fontWeight:700,fontSize:14}}>{p?.icon} {p?.label}</div><div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>Monthly billing</div></div>
-            <div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700,color:p?.color}}>${p?.price}/mo</div>
+        {/* Coming Soon Banner */}
+        <div style={{background:"var(--gdd,#03311A)",borderRadius:16,padding:"28px 20px",textAlign:"center",marginTop:8,marginBottom:24}}>
+          <div style={{fontSize:36,marginBottom:10}}>🚧</div>
+          <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:20,color:"white",marginBottom:8}}>Payments Coming Soon</div>
+          <div style={{fontSize:13,color:"rgba(254,252,247,0.65)",lineHeight:1.7,marginBottom:16}}>
+            We are setting up secure payment processing. As a founding partner, your access is completely free during this period.{"\n\n"}We will notify you the moment billing goes live.
           </div>
-          <label className="form-label">Card Number</label>
-          <input className="pay-input" placeholder="1234  5678  9012  3456" maxLength={19}/>
-          <div className="pay-row">
-            <div style={{flex:1}}><label className="form-label">Expiry</label><input className="pay-input" placeholder="MM/YY" maxLength={5}/></div>
-            <div style={{flex:1}}><label className="form-label">CVC</label><input className="pay-input" placeholder="123" maxLength={3}/></div>
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"rgba(77,217,148,0.15)",border:"1px solid rgba(77,217,148,0.3)",borderRadius:20,padding:"8px 16px"}}>
+            <span style={{color:"#4DD994",fontSize:12,fontWeight:700}}>✓ Currently Free for All Users</span>
           </div>
-          <label className="form-label">Name on Card</label>
-          <input className="pay-input" placeholder="Your full name" style={{letterSpacing:"normal"}}/>
-          <div style={{display:"flex",gap:8,marginBottom:16}}>
-            {["💳 Stripe","📱 Paystack","🏦 Flutterwave"].map((m,i)=>(
-              <button key={i} style={{flex:1,background:"var(--sand)",border:"1px solid var(--bdr)",borderRadius:8,padding:"8px 4px",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:600,color:"var(--sub)",cursor:"pointer"}}>{m}</button>
-            ))}
-          </div>
-          {payErr&&<div style={{fontSize:11,color:"var(--warn)",textAlign:"center",marginBottom:10}}>⏳ {payErr}</div>}
-          <button className="pay-btn" style={{background:p?.color}} onClick={handlePay} disabled={loading}>
-            {loading?<><span className="spin"/>Processing…</>:<>🔒 Pay ${p?.price}/month</>}
-          </button>
-          <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"center",fontSize:11,color:"var(--sub)",marginTop:12}}>🔒 Secured by Stripe · SSL Encrypted</div>
-          <button onClick={()=>setStep("plans")} style={{width:"100%",background:"none",border:"none",color:"var(--sub)",fontFamily:"'Outfit',sans-serif",fontSize:13,cursor:"pointer",marginTop:12}}>← Back to plans</button>
         </div>
-      )}
 
-      {step==="success"&&(
-        <div style={{padding:"0 17px",textAlign:"center"}}>
-          <div style={{fontSize:64,marginBottom:20,marginTop:20}}>🎉</div>
-          <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:700,marginBottom:8,color:p?.color}}>Welcome to {p?.label}!</div>
-          <div style={{fontSize:14,color:"var(--sub)",lineHeight:1.7,marginBottom:24}}>Your account is upgraded. All features are now unlocked.</div>
-          <div style={{background:`${p?.color}10`,border:`1px solid ${p?.color}30`,borderRadius:14,padding:16,marginBottom:20,textAlign:"left"}}>
-            {p?.feats.map((f,i)=><div key={i} className="plan-feature" style={{color:"var(--txt)"}}>{f}</div>)}
-          </div>
-          <button className="form-submit" style={{background:p?.color}}>Explore Xairod →</button>
+        <div style={{fontSize:11,color:"var(--sub)",textAlign:"center",marginBottom:24}}>
+          Questions? Email us at{" "}
+          <a href="mailto:hello@xairod.com" style={{color:"var(--g)",fontWeight:600}}>hello@xairod.com</a>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -1456,8 +1400,19 @@ function EditProfileModal({user, onClose, onSave}){
     }
   };
 
-  const handleSave=()=>{
-    onSave({...user,name,email,city,role,phone,bio,avatarUrl:avatarPreview});
+  const handleSave=async()=>{
+    // Save to Supabase profiles table
+    if(user?.id){
+      await supabase.from("profiles").update({
+        name:name.trim(),
+        city,
+        role,
+        phone:phone.trim(),
+        bio:bio.trim(),
+        avatar_url:avatarPreview||null,
+      }).eq("id",user.id);
+    }
+    onSave({...user,name:name.trim(),email,city,role,phone:phone.trim(),bio:bio.trim(),avatarUrl:avatarPreview});
     setSavedState(true);
     setTimeout(()=>onClose(),800);
   };
@@ -1742,41 +1697,64 @@ function MainApp({user,onLogout}){
   const[dark,setDark]=useState(false);
   const[lang,setLang]=useState("en");
   const[groups,setGroups]=useState(GROUPS);
+  const[openGroup,setOpenGroup]=useState(null); // group detail view
   const[notifDetail,setNotifDetail]=useState(null);
   const[listings,setListings]=useState(DATA); // starts with mock, replaced by Supabase
   const[notifications,setNotifications]=useState(NOTIFS); // starts with mock
   const[qaList,setQaList]=useState(QA);
   const t=T[lang];
 
-  // Load real data from Supabase
+  // ── LOAD ALL DATA + USER-SPECIFIC STATE ON STARTUP ────────────────────────
   useEffect(()=>{
-    // Listings
+    // Public data — listings, groups, Q&A
     supabase.from("listings").select("*").eq("status","active").order("rating",{ascending:false})
-      .then(({data})=>{ if(data&&data.length>0) setListings(data.map(l=>({...l,cat:l.category,rc:l.review_count||0,top:l.top||false,african:l.african_owned||false,icon:"🏢",price:l.price||"$$",verified:l.verified||false,images:l.images||[]}))); });
-    // Groups
+      .then(({data})=>{ if(data&&data.length>0) setListings(data.map(l=>({...l,cat:l.category,rc:l.review_count||0,top:l.top||false,african:l.african_owned||false,icon:l.icon||"🏢",price:l.price||"$$",verified:l.verified||false,images:l.images||[]}))); });
+
     supabase.from("groups").select("*").order("member_count",{ascending:false})
       .then(({data})=>{ if(data&&data.length>0) setGroups(data.map(g=>({...g,joined:false}))); });
-    // Community questions
-    supabase.from("community_questions").select("*, profiles(name)").order("created_at",{ascending:false}).limit(20)
-      .then(({data})=>{ if(data&&data.length>0) setQaList(data.map(q=>({id:q.id,q:q.question,a:q.profiles?.name||"Community",r:q.reply_count||0,area:q.category||"general",t:"recent",done:q.answered}))); });
-    // Notifications (if user is logged in - handled separately below)
+
+    supabase.from("community_questions").select("*, profiles(name)").eq("flagged",false).order("created_at",{ascending:false}).limit(20)
+      .then(({data})=>{ if(data&&data.length>0) setQaList(data.map(q=>({id:q.id,q:q.question,a:q.profiles?.name||"Community",r:q.reply_count||0,area:q.category||"general",t:new Date(q.created_at).toLocaleDateString(),done:q.answered}))); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  // Load and subscribe to real-time notifications
+  // ── LOAD USER-SPECIFIC DATA WHEN USER LOGS IN ─────────────────────────────
+  // This is what was missing — runs every time user changes (login/logout/refresh)
+  // Loads: saved listings, joined groups, notifications, plan from profile
   useEffect(()=>{
     if(!user?.id) return;
-    // Load existing notifications
+
+    // 1. Load saved listings — restores saved state after refresh
+    supabase.from("saved_listings").select("listing_id").eq("user_id",user.id)
+      .then(({data})=>{ if(data) setSaved(new Set(data.map(s=>s.listing_id))); });
+
+    // 2. Load joined groups — restores group membership after refresh
+    supabase.from("group_members").select("group_id").eq("user_id",user.id)
+      .then(({data})=>{
+        if(data){
+          const joinedIds=new Set(data.map(m=>m.group_id));
+          setGroups(prev=>prev.map(g=>({...g,joined:joinedIds.has(g.id)})));
+        }
+      });
+
+    // 3. Load notifications
     supabase.from("notifications").select("*").eq("user_id",user.id).order("created_at",{ascending:false}).limit(20)
       .then(({data})=>{ if(data&&data.length>0) setNotifications(data.map(n=>({id:n.id,icon:n.icon||"🔔",bg:n.bg_color||"rgba(10,107,62,0.15)",msg:n.message,detail:n.detail||"",t:new Date(n.created_at).toLocaleDateString(),n:!n.is_read}))); });
-    // Subscribe to new notifications in real time
-    const channel=supabase.channel("notifications:"+user.id)
+
+    // 4. Load user plan from profile
+    supabase.from("profiles").select("plan").eq("id",user.id).single()
+      .then(({data})=>{ if(data?.plan) setPlan(data.plan); });
+
+    // 5. Subscribe to real-time notifications
+    const channel=supabase.channel("notif:"+user.id)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:"user_id=eq."+user.id},
         payload=>{ setNotifications(prev=>[{id:payload.new.id,icon:payload.new.icon||"🔔",bg:payload.new.bg_color||"rgba(10,107,62,0.15)",msg:payload.new.message,detail:payload.new.detail||"",t:"Just now",n:true},...prev]); }
       ).subscribe();
+
     return()=>supabase.removeChannel(channel);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id]);
+
   const NAV_LOCAL=[
     {id:"home",   label:t.home,      icon:NAV[0].icon},
     {id:"explore",label:t.explore,   icon:NAV[1].icon},
@@ -1837,10 +1815,19 @@ function MainApp({user,onLogout}){
   const planInfo=PLANS.find(p=>p.id===plan);
 
   useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=0;},[tab]);
-  const toggleSave=id=>{
+  const toggleSave=async id=>{
     const wasSaved=saved.has(id);
     trackEvent(wasSaved?"listing_unsaved":"listing_saved",{listingId:id});
+    // Update UI immediately for instant feedback
     setSaved(prev=>{const next=new Set(prev);next.has(id)?next.delete(id):next.add(id);return next;});
+    // Persist to Supabase
+    if(user?.id){
+      if(wasSaved){
+        await supabase.from("saved_listings").delete().eq("user_id",user.id).eq("listing_id",id);
+      }else{
+        await supabase.from("saved_listings").upsert({user_id:user.id,listing_id:id});
+      }
+    }
   };
   const onOpen=item=>setDetail(item);
 
@@ -2220,22 +2207,42 @@ function MainApp({user,onLogout}){
         {tab==="admin"&&<AdminPanel/>}
 
         {/* ── GROUPS TAB ── */}
-        {tab==="groups"&&(
+        {tab==="groups"&&!openGroup&&(
           <div className="page-pad">
             <div style={{padding:"17px 17px 11px"}}>
               <div style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:700,marginBottom:4}}>{t.groupsTitle}</div>
-              <div style={{fontSize:12,color:"var(--sub)",marginBottom:14}}>{t.groupsDesc||"Connect with Africans by nationality, city or interest"}</div>
+              <div style={{fontSize:12,color:"var(--sub)",marginBottom:14}}>Connect with Africans by nationality, city or interest</div>
+
+              {/* My Groups */}
+              {groups.filter(g=>g.joined).length>0&&(
+                <div style={{marginBottom:20}}>
+                  <div style={{fontSize:11,fontWeight:800,color:"var(--g)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>✅ {t.myGroups}</div>
+                  {groups.filter(g=>g.joined).map(g=>(
+                    <div key={g.id} style={{background:"var(--gl,#E8F5EE)",border:"1.5px solid var(--g)",borderRadius:13,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setOpenGroup(g)}>
+                      <div style={{fontSize:26,flexShrink:0}}>{g.emoji}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:13}}>{lang==="ar"&&g.name_ar?g.name_ar:g.name}</div>
+                        <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>👥 {(g.member_count||0).toLocaleString()} members · Tap to open</div>
+                      </div>
+                      <span style={{color:"var(--g)",fontSize:16}}>›</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* All Groups by category */}
               {["nationality","city","interest"].map(cat=>(
                 <div key={cat} style={{marginBottom:20}}>
                   <div style={{fontSize:11,fontWeight:800,color:"var(--sub)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{cat}</div>
                   {groups.filter(g=>g.category===cat).map(g=>(
                     <div key={g.id} style={{background:"var(--card)",border:"1px solid var(--bdr)",borderRadius:13,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-                      <div style={{fontSize:26,flexShrink:0}}>{g.emoji}</div>
-                      <div style={{flex:1}}>
+                      <div style={{fontSize:26,flexShrink:0,cursor:"pointer"}} onClick={()=>setOpenGroup(g)}>{g.emoji}</div>
+                      <div style={{flex:1,cursor:"pointer"}} onClick={()=>setOpenGroup(g)}>
                         <div style={{fontWeight:700,fontSize:13}}>{lang==="ar"&&g.name_ar?g.name_ar:g.name}</div>
-                        <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>👥 {(g.member_count||g.members||0).toLocaleString()} members</div>
+                        <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>👥 {(g.member_count||0).toLocaleString()} members</div>
                       </div>
-                      <button onClick={async()=>{
+                      <button onClick={async(e)=>{
+                        e.stopPropagation();
                         if(!user?.id){setTab("profile");return;}
                         if(g.joined){
                           await supabase.from("group_members").delete().eq("user_id",user.id).eq("group_id",g.id);
@@ -2251,6 +2258,49 @@ function MainApp({user,onLogout}){
                   ))}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── GROUP DETAIL VIEW ── */}
+        {tab==="groups"&&openGroup&&(
+          <div className="page-pad">
+            <div style={{padding:"17px"}}>
+              <button onClick={()=>setOpenGroup(null)} style={{background:"none",border:"none",color:"var(--g)",fontWeight:700,fontSize:13,cursor:"pointer",padding:"0 0 14px",fontFamily:"'Outfit',sans-serif"}}>← Back to Groups</button>
+              <div style={{textAlign:"center",marginBottom:20}}>
+                <div style={{fontSize:52,marginBottom:8}}>{openGroup.emoji}</div>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:800}}>{lang==="ar"&&openGroup.name_ar?openGroup.name_ar:openGroup.name}</div>
+                <div style={{fontSize:12,color:"var(--sub)",marginTop:4}}>👥 {(openGroup.member_count||0).toLocaleString()} members</div>
+                <button onClick={async()=>{
+                  if(!user?.id){setTab("profile");return;}
+                  const g=openGroup;
+                  if(g.joined){
+                    await supabase.from("group_members").delete().eq("user_id",user.id).eq("group_id",g.id);
+                  }else{
+                    await supabase.from("group_members").insert({user_id:user.id,group_id:g.id});
+                  }
+                  const updated={...g,joined:!g.joined,member_count:(g.member_count||0)+(g.joined?-1:1)};
+                  setGroups(prev=>prev.map(x=>x.id===g.id?updated:x));
+                  setOpenGroup(updated);
+                }}
+                  style={{marginTop:12,padding:"10px 28px",borderRadius:20,border:"none",background:openGroup.joined?"var(--sand)":"var(--g)",color:openGroup.joined?"var(--sub)":"white",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                  {openGroup.joined?(t.leaveGroup||"Leave Group"):(t.joinGroup||"Join Group")}
+                </button>
+              </div>
+              {!openGroup.joined?(
+                <div style={{textAlign:"center",padding:"24px",background:"var(--sand)",borderRadius:12}}>
+                  <div style={{fontSize:28,marginBottom:8}}>🔒</div>
+                  <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>Join to see discussions</div>
+                  <div style={{fontSize:12,color:"var(--sub)"}}>Join this group to see posts and connect with members</div>
+                </div>
+              ):(
+                <div>
+                  <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>📢 Group discussions coming soon</div>
+                  <div style={{background:"var(--sand)",borderRadius:12,padding:16,fontSize:12,color:"var(--sub)",lineHeight:1.6}}>
+                    You are now a member of this group. In-group messaging and discussions will be available in the next update. Connect with other members via the Community tab for now.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
