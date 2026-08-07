@@ -2359,10 +2359,66 @@ function MainApp({user,onLogout}){
 }
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
+// ─── RESET PASSWORD SCREEN ────────────────────────────────────────────────────
+function ResetPassword({onDone}){
+  const[pwd,setPwd]=useState("");
+  const[confirm,setConfirm]=useState("");
+  const[loading,setLoading]=useState(false);
+  const[err,setErr]=useState("");
+  const[done,setDone]=useState(false);
+
+  const submit=async()=>{
+    setErr("");
+    if(pwd.length<8){setErr("Password must be at least 8 characters.");return;}
+    if(pwd!==confirm){setErr("Passwords do not match.");return;}
+    setLoading(true);
+    const{error}=await supabase.auth.updateUser({password:pwd});
+    setLoading(false);
+    if(error){setErr("Failed to update password. Please try again.");return;}
+    setDone(true);
+    setTimeout(()=>onDone(),2500);
+  };
+
+  return(
+    <div className="auth">
+      <StarsBg/>
+      <div className="auth-scroll">
+        <div className="auth-head">
+          <div className="auth-logo"><span className="x">X</span>airod<span className="d">.</span></div>
+          <h2>{done?"Password Updated! ✅":"Set New Password"}</h2>
+          <p>{done?"Redirecting you to login…":"Choose a strong new password for your account."}</p>
+        </div>
+        {!done&&<>
+          {err&&<div className="err">⚠️ {err}</div>}
+          <div className="field">
+            <label>New Password</label>
+            <input type="password" placeholder="Min 8 characters" value={pwd} onChange={e=>setPwd(e.target.value)}/>
+          </div>
+          <div className="field">
+            <label>Confirm Password</label>
+            <input type="password" placeholder="Repeat new password" value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+          </div>
+          <button className="auth-btn" onClick={submit} disabled={loading}>
+            {loading&&<span className="spin"/>}{loading?"Updating…":"Update Password →"}
+          </button>
+        </>}
+      </div>
+    </div>
+  );
+}
+
 export default function App(){
   const[screen,setScreen]=useState("splash");
   const[user,setUser]=useState(null);
+
   useEffect(()=>{
+    // Check if this is a password reset link click
+    const hash=window.location.hash;
+    if(hash.includes("type=recovery")){
+      setScreen("reset_password");
+      return;
+    }
+
     // Restore session on reload without blocking the UI
     supabase.auth.getSession().then(async({data:{session}})=>{
       if(session?.user){
@@ -2375,6 +2431,7 @@ export default function App(){
     }).catch(()=>{/* Supabase unreachable — app still runs in demo mode */});
     const{data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
       if(event==="SIGNED_OUT"||!session){setUser(null);setScreen("onboard");}
+      if(event==="PASSWORD_RECOVERY"){setScreen("reset_password");}
     });
     return()=>subscription.unsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2401,6 +2458,7 @@ export default function App(){
           <div className="splash-flags">🌍 × 🇪🇬</div>
         </div>
 
+        {screen==="reset_password"&&<ResetPassword onDone={()=>setScreen("login")}/>}
         {screen==="onboard"&&<Onboarding onDone={()=>setScreen("signup")} onLogin={()=>setScreen("login")}/>}
         {screen==="login"&&<Login onSignup={()=>setScreen("signup")} onSuccess={login}/>}
         {screen==="signup"&&<Signup onLogin={()=>setScreen("login")} onBack={()=>setScreen("onboard")} onSuccess={login}/>}
