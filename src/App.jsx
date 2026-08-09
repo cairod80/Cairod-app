@@ -290,6 +290,330 @@ const GROUPS=[
   {id:"ke",name:"Kenyan Community Egypt",name_ar:"مجتمع الكينيين",emoji:"🇰🇪",members:62,category:"nationality",joined:false},
 ];
 
+// ════════════════════════════════════════════════════════════════════════════
+// NOTIFICATION SYSTEM
+// ════════════════════════════════════════════════════════════════════════════
+function playNotifSound(){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(880,ctx.currentTime);
+    osc.frequency.setValueAtTime(1100,ctx.currentTime+0.1);
+    gain.gain.setValueAtTime(0.12,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.4);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.4);
+  }catch(e){}
+}
+const NotifCtx=React.createContext(null);
+function NotifProvider({userId,lang,setTab,children}){
+  const[notifs,setNotifs]=useState([]);
+  const[toasts,setToasts]=useState([]);
+  React.useEffect(()=>{
+    if(!userId)return;
+    supabase.from("notifications").select("*").eq("user_id",userId).order("created_at",{ascending:false}).limit(50)
+      .then(({data})=>{if(data)setNotifs(data);});
+    const ch=supabase.channel("notifs:"+userId)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:"user_id=eq."+userId},
+        p=>{
+          setNotifs(prev=>[p.new,...prev]);
+          const tid=Date.now();
+          setToasts(prev=>[...prev,{...p.new,tid}]);
+          playNotifSound();
+          setTimeout(()=>setToasts(prev=>prev.filter(t=>t.tid!==tid)),5000);
+        }).subscribe();
+    return()=>supabase.removeChannel(ch);
+  },[userId]);
+  const markRead=async id=>{
+    setNotifs(prev=>prev.map(n=>n.id===id?{...n,is_read:true}:n));
+    await supabase.from("notifications").update({is_read:true}).eq("id",id);
+  };
+  const toggleStar=async id=>{
+    const n=notifs.find(x=>x.id===id);
+    setNotifs(prev=>prev.map(x=>x.id===id?{...x,is_saved:!x.is_saved}:x));
+    await supabase.from("notifications").update({is_saved:!n?.is_saved}).eq("id",id);
+  };
+  const markAllRead=async()=>{
+    setNotifs(prev=>prev.map(n=>({...n,is_read:true})));
+    await supabase.from("notifications").update({is_read:true}).eq("user_id",userId).eq("is_read",false);
+  };
+  const unread=notifs.filter(n=>!n.is_read).length;
+  return(
+    <NotifCtx.Provider value={{notifs,toasts,unread,markRead,toggleStar,markAllRead,setToasts,setTab,lang}}>
+      {children}
+      <ToastStack/>
+    </NotifCtx.Provider>
+  );
+}
+function useNotif(){return React.useContext(NotifCtx)||{};}
+
+function ToastStack(){
+  const{toasts,setToasts,markRead}=useNotif();
+  if(!toasts?.length)return null;
+  return(
+    <div style={{position:"fixed",bottom:80,right:12,zIndex:999,display:"flex",flexDirection:"column-reverse",gap:8,width:300}}>
+      {toasts.map(t=><NotifToast key={t.tid} t={t} onDismiss={()=>setToasts(p=>p.filter(x=>x.tid!==t.tid))} onRead={()=>markRead(t.id)}/>)}
+    </div>
+  );
+}
+function NotifToast({t,onDismiss,onRead}){
+  const[show,setShow]=useState(false);
+  React.useEffect(()=>{setTimeout(()=>setShow(true),10);},[]);
+  return(
+    <div onClick={()=>{onRead();onDismiss();}} style={{background:"var(--bg)",border:"1px solid var(--bdr)",borderLeft:"4px solid var(--g)",borderRadius:12,padding:"11px 13px",boxShadow:"0 8px 28px rgba(0,0,0,0.15)",cursor:"pointer",display:"flex",gap:10,alignItems:"flex-start",transform:show?"translateX(0)":"translateX(120%)",transition:"transform 0.35s cubic-bezier(0.22,1,0.36,1)"}}>
+      <div style={{fontSize:20,width:32,height:32,borderRadius:8,background:t.bg_color||"rgba(10,107,62,0.12)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{t.icon||"🔔"}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:11,fontWeight:700,lineHeight:1.3,marginBottom:2}}>{t.message}</div>
+        {t.detail&&<div style={{fontSize:10,color:"var(--sub)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.detail}</div>}
+      </div>
+      <button onClick={e=>{e.stopPropagation();onDismiss();}} style={{background:"none",border:"none",color:"var(--sub)",fontSize:14,cursor:"pointer",padding:0}}>×</button>
+    </div>
+  );
+}
+
+function NotifBell(){
+  const{notifs,unread,markRead,toggleStar,markAllRead,lang}=useNotif();
+  const[open,setOpen]=useState(false);
+  const[tab,setTab]=useState("inbox");
+  const[detail,setDetail]=useState(null);
+  const ref=useRef(null);
+  React.useEffect(()=>{
+    const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
+    document.addEventListener("mousedown",h);
+    return()=>document.removeEventListener("mousedown",h);
+  },[]);
+  const list=tab==="inbox"?notifs:tab==="unread"?notifs.filter(n=>!n.is_read):notifs.filter(n=>n.is_saved);
+  return(
+    <div ref={ref} style={{position:"relative"}}>
+      <button className="icon-btn" onClick={()=>setOpen(!open)} style={{position:"relative"}}>
+        🔔
+        {unread>0&&<span style={{position:"absolute",top:-2,right:-2,background:"#C0392B",color:"white",borderRadius:"50%",minWidth:14,height:14,fontSize:8,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 2px",border:"1.5px solid var(--bg)"}}>{unread>9?"9+":unread}</span>}
+      </button>
+      {open&&(
+        <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,width:320,maxHeight:460,background:"var(--bg)",border:"1px solid var(--bdr)",borderRadius:16,boxShadow:"0 16px 48px rgba(0,0,0,0.18)",zIndex:200,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{padding:"12px 14px 0",borderBottom:"1px solid var(--bdr)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <div style={{fontFamily:"'Fraunces',serif",fontWeight:700,fontSize:14}}>{lang==="ar"?"الإشعارات":"Notifications"}</div>
+              {unread>0&&<button onClick={markAllRead} style={{fontSize:10,color:"var(--g)",fontWeight:700,background:"none",border:"none",cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>{lang==="ar"?"قراءة الكل":"Mark all read"}</button>}
+            </div>
+            <div style={{display:"flex",gap:0}}>
+              {["inbox","unread","saved"].map(t=>(
+                <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"6px 0",fontSize:10,fontWeight:tab===t?700:500,color:tab===t?"var(--g)":"var(--sub)",background:"none",border:"none",borderBottom:tab===t?"2px solid var(--g)":"2px solid transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textTransform:"capitalize"}}>
+                  {t}{t==="unread"&&unread>0&&<span style={{marginLeft:3,background:"#C0392B",color:"white",borderRadius:8,padding:"0 4px",fontSize:8}}>{unread}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{overflowY:"auto",flex:1}}>
+            {!list.length?<div style={{padding:"28px 14px",textAlign:"center",color:"var(--sub)",fontSize:11}}>Nothing here yet</div>:
+            list.map(n=>(
+              <div key={n.id} onClick={()=>{if(!n.is_read)markRead(n.id);setDetail(n);}} style={{display:"flex",gap:9,padding:"10px 12px",cursor:"pointer",background:n.is_read?"transparent":"rgba(10,107,62,0.04)",borderBottom:"1px solid var(--bdr)",alignItems:"flex-start"}}>
+                <div style={{fontSize:16,width:28,height:28,borderRadius:7,background:n.bg_color||"rgba(10,107,62,0.12)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{n.icon||"🔔"}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,fontWeight:n.is_read?500:700,lineHeight:1.3,marginBottom:1}}>{lang==="ar"&&n.message_ar?n.message_ar:n.message}</div>
+                  {n.detail&&<div style={{fontSize:10,color:"var(--sub)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.detail}</div>}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0,alignItems:"center"}}>
+                  {!n.is_read&&<div style={{width:6,height:6,borderRadius:"50%",background:"var(--g)"}}/>}
+                  <button onClick={e=>{e.stopPropagation();toggleStar(n.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:n.is_saved?"#C8861A":"var(--sand2)",padding:0}}>{n.is_saved?"★":"☆"}</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {detail&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setDetail(null)}>
+          <div style={{background:"var(--bg)",borderRadius:16,padding:22,maxWidth:380,width:"100%"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:12}}>
+              <div style={{fontSize:24,width:42,height:42,borderRadius:10,background:detail.bg_color,display:"flex",alignItems:"center",justifyContent:"center"}}>{detail.icon}</div>
+              <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,lineHeight:1.3}}>{detail.message}</div><div style={{fontSize:10,color:"var(--sub)",marginTop:2}}>{detail.created_at?new Date(detail.created_at).toLocaleString():""}</div></div>
+            </div>
+            {detail.detail&&<div style={{fontSize:12,color:"var(--txt)",lineHeight:1.7,background:"var(--sand)",borderRadius:10,padding:"10px 12px",marginBottom:12}}>{detail.detail}</div>}
+            <button onClick={()=>{toggleStar(detail.id);setDetail(d=>({...d,is_saved:!d.is_saved}));}} style={{width:"100%",padding:"9px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"transparent",fontFamily:"'Outfit',sans-serif",fontSize:12,cursor:"pointer",color:detail.is_saved?"#C8861A":"var(--sub)"}}>
+              {detail.is_saved?"★ Saved — tap to unsave":"☆ Save notification"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// LIVE CHAT SYSTEM
+// ════════════════════════════════════════════════════════════════════════════
+function ChatScreen({user,lang}){
+  const[groups,setGroups]=useState([]);
+  const[activeGroup,setActiveGroup]=useState(null);
+  const[messages,setMessages]=useState([]);
+  const[input,setInput]=useState("");
+  const[sending,setSending]=useState(false);
+  const[loadingMsgs,setLoadingMsgs]=useState(false);
+  const[members,setMembers]=useState([]);
+  const bottomRef=useRef(null);
+  const inputRef=useRef(null);
+
+  // Load chat groups (reuse existing groups table)
+  React.useEffect(()=>{
+    supabase.from("groups").select("*").order("member_count",{ascending:false})
+      .then(({data})=>{if(data)setGroups(data);});
+  },[]);
+
+  // Load messages when group changes
+  React.useEffect(()=>{
+    if(!activeGroup)return;
+    setLoadingMsgs(true);
+    setMessages([]);
+    supabase.from("chat_messages").select("*,profiles(name,avatar_url)")
+      .eq("group_id",activeGroup.id)
+      .order("created_at",{ascending:true})
+      .limit(100)
+      .then(({data})=>{if(data)setMessages(data);setLoadingMsgs(false);});
+
+    // Load member count
+    supabase.from("group_members").select("user_id,profiles(name,avatar_url)")
+      .eq("group_id",activeGroup.id).limit(20)
+      .then(({data})=>{if(data)setMembers(data);});
+
+    // Realtime subscription
+    const ch=supabase.channel("chat:"+activeGroup.id)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages",filter:"group_id=eq."+activeGroup.id},
+        async p=>{
+          // Fetch profile for new message
+          const{data:profile}=await supabase.from("profiles").select("name,avatar_url").eq("id",p.new.sender_id).single();
+          setMessages(prev=>[...prev,{...p.new,profiles:profile}]);
+        }
+      ).subscribe();
+    return()=>supabase.removeChannel(ch);
+  },[activeGroup?.id]);
+
+  // Auto-scroll to bottom on new messages
+  React.useEffect(()=>{
+    bottomRef.current?.scrollIntoView({behavior:"smooth"});
+  },[messages]);
+
+  const sendMessage=async()=>{
+    const text=input.trim();
+    if(!text||!activeGroup||sending)return;
+    setInput("");
+    setSending(true);
+    await supabase.from("chat_messages").insert({
+      group_id:activeGroup.id,
+      sender_id:user.id,
+      message_content:text,
+    });
+    setSending(false);
+    inputRef.current?.focus();
+  };
+
+  const joinGroup=async(g)=>{
+    await supabase.from("group_members").upsert({user_id:user.id,group_id:g.id});
+    setActiveGroup(g);
+  };
+
+  const formatTime=ts=>new Date(ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  const isMine=m=>m.sender_id===user.id;
+
+  return(
+    <div style={{display:"flex",height:"calc(100dvh - 110px)",background:"var(--bg)",borderRadius:14,overflow:"hidden",border:"1px solid var(--bdr)"}}>
+      {/* SIDEBAR */}
+      <div style={{width:220,borderRight:"1px solid var(--bdr)",display:"flex",flexDirection:"column",flexShrink:0}}>
+        <div style={{padding:"14px 12px 10px",borderBottom:"1px solid var(--bdr)"}}>
+          <div style={{fontFamily:"'Fraunces',serif",fontWeight:700,fontSize:14,marginBottom:2}}>{lang==="ar"?"المجموعات":"Group Chats"}</div>
+          <div style={{fontSize:10,color:"var(--sub)"}}>{groups.length} {lang==="ar"?"مجموعة":"groups"}</div>
+        </div>
+        <div style={{flex:1,overflowY:"auto"}}>
+          {groups.map(g=>(
+            <div key={g.id} onClick={()=>joinGroup(g)} style={{padding:"10px 12px",cursor:"pointer",background:activeGroup?.id===g.id?"var(--gl,#E8F5EE)":"transparent",borderBottom:"1px solid var(--bdr)",borderLeft:activeGroup?.id===g.id?"3px solid var(--g)":"3px solid transparent",transition:"background 0.15s"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:20}}>{g.emoji||"💬"}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,fontWeight:activeGroup?.id===g.id?700:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:activeGroup?.id===g.id?"var(--g)":"var(--txt)"}}>{lang==="ar"&&g.name_ar?g.name_ar:g.name}</div>
+                  <div style={{fontSize:9,color:"var(--sub)",marginTop:1}}>👥 {(g.member_count||0).toLocaleString()}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* CHAT AREA */}
+      {!activeGroup?(
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"var(--sub)"}}>
+          <div style={{fontSize:40}}>💬</div>
+          <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:700,color:"var(--txt)"}}>Select a group to start chatting</div>
+          <div style={{fontSize:12}}>{lang==="ar"?"اختر مجموعة للبدء":"Choose from the list on the left"}</div>
+        </div>
+      ):(
+        <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
+          {/* Chat Header */}
+          <div style={{padding:"12px 16px",borderBottom:"1px solid var(--bdr)",display:"flex",alignItems:"center",gap:10,background:"var(--bg)",flexShrink:0}}>
+            <button onClick={()=>setActiveGroup(null)} style={{background:"none",border:"none",color:"var(--sub)",fontSize:16,cursor:"pointer",padding:"0 4px 0 0"}}>‹</button>
+            <span style={{fontSize:22}}>{activeGroup.emoji||"💬"}</span>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:13}}>{lang==="ar"&&activeGroup.name_ar?activeGroup.name_ar:activeGroup.name}</div>
+              <div style={{fontSize:10,color:"var(--sub)"}}>👥 {(activeGroup.member_count||0).toLocaleString()} members</div>
+            </div>
+            <div style={{display:"flex",gap:-6}}>
+              {members.slice(0,4).map((m,i)=>(
+                <div key={i} style={{width:22,height:22,borderRadius:"50%",background:"var(--g)",border:"1.5px solid var(--bg)",marginLeft:i>0?-6:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"white",fontWeight:700}}>
+                  {m.profiles?.name?.[0]?.toUpperCase()||"?"}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
+            {loadingMsgs&&<div style={{textAlign:"center",color:"var(--sub)",fontSize:11,padding:20}}>Loading messages…</div>}
+            {!loadingMsgs&&messages.length===0&&(
+              <div style={{textAlign:"center",color:"var(--sub)",fontSize:11,padding:20,marginTop:"auto"}}>
+                No messages yet. Be the first to say something! 👋
+              </div>
+            )}
+            {messages.map((m,i)=>{
+              const mine=isMine(m);
+              const prev=messages[i-1];
+              const showName=!mine&&(!prev||prev.sender_id!==m.sender_id);
+              return(
+                <div key={m.id} style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:6,alignItems:"flex-end"}}>
+                  {!mine&&(
+                    <div style={{width:26,height:26,borderRadius:"50%",background:"var(--g)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"white",fontWeight:700,flexShrink:0,marginBottom:2,opacity:showName?1:0}}>
+                      {m.profiles?.name?.[0]?.toUpperCase()||"?"}
+                    </div>
+                  )}
+                  <div style={{maxWidth:"72%",display:"flex",flexDirection:"column",gap:2,alignItems:mine?"flex-end":"flex-start"}}>
+                    {showName&&<div style={{fontSize:9,color:"var(--sub)",marginLeft:4}}>{m.profiles?.name||"Member"}</div>}
+                    <div style={{background:mine?"var(--g)":"var(--sand)",color:mine?"white":"var(--txt)",padding:"8px 12px",borderRadius:mine?"16px 16px 4px 16px":"16px 16px 16px 4px",fontSize:12,lineHeight:1.5,wordBreak:"break-word"}}>
+                      {m.message_content}
+                    </div>
+                    <div style={{fontSize:9,color:"var(--sub)",marginLeft:mine?0:4,marginRight:mine?4:0}}>{formatTime(m.created_at)}</div>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef}/>
+          </div>
+
+          {/* Input Bar */}
+          <div style={{padding:"10px 12px",borderTop:"1px solid var(--bdr)",background:"var(--bg)",flexShrink:0,display:"flex",gap:8,alignItems:"flex-end"}}>
+            <div style={{flex:1,background:"var(--sand)",borderRadius:20,padding:"8px 14px",display:"flex",alignItems:"center",gap:8,border:"1.5px solid var(--bdr)"}}>
+              <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&sendMessage()}
+                placeholder={lang==="ar"?"اكتب رسالة…":"Type a message…"}
+                style={{flex:1,background:"none",border:"none",outline:"none",fontSize:12,fontFamily:"'Outfit',sans-serif",color:"var(--txt)"}}/>
+            </div>
+            <button onClick={sendMessage} disabled={!input.trim()||sending}
+              style={{width:36,height:36,borderRadius:"50%",border:"none",background:input.trim()?"var(--g)":"var(--sand2)",color:input.trim()?"white":"var(--sub)",display:"flex",alignItems:"center",justifyContent:"center",cursor:input.trim()?"pointer":"default",flexShrink:0,fontSize:14,transition:"background 0.2s"}}>
+              {sending?"…":"➤"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const css=`
 @import url('${GF}');
@@ -1326,6 +1650,7 @@ const NAV=[
   {id:"community",label:"Community",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>},
   {id:"sub",label:"Plans",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>},
   {id:"groups",label:"Groups",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.85"/></svg>},
+  {id:"chat",label:"Chat",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>},
   {id:"profile",label:"Profile",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>},
 ];
 
@@ -1733,21 +2058,11 @@ function MainApp({user,onLogout}){
         }
       });
 
-    // 3. Load notifications
-    supabase.from("notifications").select("*").eq("user_id",user.id).order("created_at",{ascending:false}).limit(20)
-      .then(({data})=>{ if(data&&data.length>0) setNotifications(data.map(n=>({id:n.id,icon:n.icon||"🔔",bg:n.bg_color||"rgba(10,107,62,0.15)",msg:n.message,detail:n.detail||"",t:new Date(n.created_at).toLocaleDateString(),n:!n.is_read}))); });
-
     // 4. Load user plan from profile
     supabase.from("profiles").select("plan").eq("id",user.id).single()
       .then(({data})=>{ if(data?.plan) setPlan(data.plan); });
 
-    // 5. Subscribe to real-time notifications
-    const channel=supabase.channel("notif:"+user.id)
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:"user_id=eq."+user.id},
-        payload=>{ setNotifications(prev=>[{id:payload.new.id,icon:payload.new.icon||"🔔",bg:payload.new.bg_color||"rgba(10,107,62,0.15)",msg:payload.new.message,detail:payload.new.detail||"",t:"Just now",n:true},...prev]); }
-      ).subscribe();
-
-    return()=>supabase.removeChannel(channel);
+    return()=>{};
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id]);
 
@@ -1757,10 +2072,10 @@ function MainApp({user,onLogout}){
     {id:"tips",   label:t.tips,      icon:NAV[2].icon},
     {id:"community",label:t.community,icon:NAV[3].icon},
     {id:"groups", label:t.groups,    icon:NAV[4].icon},
+    {id:"chat",   label:"Chat",         icon:NAV[5]?.icon||NAV[4].icon},
     {id:"sub",    label:t.plans,     icon:NAV[5].icon},
     {id:"profile",label:t.profile,   icon:NAV[6].icon},
   ];
-  const[notifOpen,setNotifOpen]=useState(false);
   const[saved,setSaved]=useState(new Set());
   const[plan,setPlan]=useState("basic");
   const[srch,setSrch]=useState("");
@@ -1870,9 +2185,7 @@ function MainApp({user,onLogout}){
                 {planInfo?.icon} {planInfo?.label}
               </div>
             )}
-            <button className="icon-btn" onClick={()=>setNotifOpen(!notifOpen)}>
-              🔔{unread>0&&<span className="notif-dot"/>}
-            </button>
+            <NotifBell/>
             <button className="icon-btn" onClick={()=>setDark(!dark)}>{dark?"☀️":"🌙"}</button>
             <button className="icon-btn" onClick={()=>setLang(l=>l==="en"?"ar":"en")} style={{fontSize:11,fontWeight:800,minWidth:32,padding:"4px 6px"}}>{t.language}</button>
             {user?.isAdmin&&(
@@ -1882,30 +2195,7 @@ function MainApp({user,onLogout}){
         </div>
 
         {/* NOTIF PANEL */}
-        {notifOpen&&(
-          <div className="notif-panel">
-            <div style={{fontFamily:"'Fraunces',serif",fontSize:14,fontWeight:700,marginBottom:9}}>{t.notifications}</div>
-            {notifications.length===0&&<div style={{fontSize:12,color:"var(--sub)",textAlign:"center",padding:"16px 0"}}>{t.notifEmpty}</div>}
-            {notifications.map(n=>(
-              <div key={n.id}>
-                <div className={`notif-item ${n.n?"new":""}`} style={{cursor:"pointer"}} onClick={()=>setNotifDetail(notifDetail===n.id?null:n.id)}>
-                  <div className="notif-ico" style={{background:n.bg}}>{n.icon}</div>
-                  <div style={{flex:1}}>
-                    <div className="notif-text">{n.msg}</div>
-                    <div className="notif-time">{n.t}</div>
-                  </div>
-                  <span style={{fontSize:10,color:"var(--sub)",marginLeft:4}}>{notifDetail===n.id?"▲":"▼"}</span>
-                </div>
-                {notifDetail===n.id&&(
-                  <div style={{background:"var(--sand)",borderRadius:"0 0 10px 10px",padding:"10px 12px",fontSize:12,color:"var(--txt)",lineHeight:1.6,marginTop:-4,marginBottom:6,borderLeft:"3px solid var(--g)"}}>
-                    {n.detail}
-                  </div>
-                )}
-              </div>
-            ))}
-            <button onClick={()=>{setNotifOpen(false);setNotifDetail(null);}} style={{width:"100%",background:"none",border:"1px solid var(--bdr)",borderRadius:7,padding:"6px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--sub)",cursor:"pointer",marginTop:3}}>{t.dismiss}</button>
-          </div>
-        )}
+
 
         {/* SCROLL AREA */}
         <div className="main-scroll" ref={scrollRef}>
@@ -2335,6 +2625,9 @@ function MainApp({user,onLogout}){
           </div>
         )}
 
+        {/* ── CHAT TAB ── */}
+        {tab==="chat"&&<div style={{padding:"0 17px"}}><ChatScreen user={user} lang={lang}/></div>}
+
         {/* ── MODALS ── */}
         {modal==="avoid"&&<SheetModal tips={AVOID} title="⚠️ What to Avoid" onClose={()=>setModal(null)}/>}
         {modal==="arrive"&&<SheetModal tips={ARRIVE} title="🎓 Student Guide" onClose={()=>setModal(null)}/>}
@@ -2348,7 +2641,7 @@ function MainApp({user,onLogout}){
       <nav className="bottom-nav">
         <div className="sidebar-logo"><span className="x">X</span>airod<span className="d">.</span></div>
         {NAV_LOCAL.map(n=>(
-          <button key={n.id} className={`nav-btn ${tab===n.id?"on":""}`} onClick={()=>{setTab(n.id);setNotifOpen(false);}}>
+          <button key={n.id} className={`nav-btn ${tab===n.id?"on":""}`} onClick={()=>setTab(n.id)}>
             {n.icon}{n.label}
             <div className="nav-indicator" style={n.id==="sub"&&plan!=="basic"?{opacity:1,background:planInfo?.color}:{}}/>
           </button>
@@ -2462,7 +2755,11 @@ export default function App(){
         {screen==="onboard"&&<Onboarding onDone={()=>setScreen("signup")} onLogin={()=>setScreen("login")}/>}
         {screen==="login"&&<Login onSignup={()=>setScreen("signup")} onSuccess={login}/>}
         {screen==="signup"&&<Signup onLogin={()=>setScreen("login")} onBack={()=>setScreen("onboard")} onSuccess={login}/>}
-        {screen==="app"&&user&&<MainApp user={user} onLogout={logout}/>}
+        {screen==="app"&&user&&(
+          <NotifProvider userId={user.id} lang="en">
+            <MainApp user={user} onLogout={logout}/>
+          </NotifProvider>
+        )}
         {screen==="app"&&user&&<CookieBanner/>}
       </div>
     </>
