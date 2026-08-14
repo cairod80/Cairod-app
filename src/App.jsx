@@ -221,12 +221,6 @@ const QA=[
   {id:"4",a:"Amira S.",q:"Does Universal Prime help with Turkey admissions too?",r:5,area:"Agencies",t:"2d ago",done:false},
 ];
 
-const NOTIFS=[
-  {id:"1",icon:"🏢",bg:"rgba(36,113,163,0.15)",msg:"Universal Prime just got a TOP badge!",detail:"Universal Prime agency has been verified and awarded the TOP badge. They assist with Al-Azhar, Cairo University and international admissions.",t:"5m ago",n:true},
-  {id:"2",icon:"🎓",bg:"rgba(142,68,173,0.15)",msg:"New scholarship: Al-Azhar 2026 intake open",detail:"Al-Azhar University has opened applications for the 2026 academic year. Full and partial scholarships available for African students. Deadline is 30 September 2026.",t:"1h ago",n:true},
-  {id:"3",icon:"🏠",bg:"rgba(230,126,34,0.15)",msg:"3 new housing listings in Nasr City",detail:"New rooms and flats added in Nasr City. Prices from 2,500 EGP/month. Go to Explore → Housing to view them.",t:"2h ago",n:false},
-  {id:"4",icon:"✈️",bg:"rgba(192,57,43,0.15)",msg:"Flight deal: Lagos→Cairo $280 this week!",detail:"Ethiopian Airlines is offering Lagos to Cairo return flights from $280 this week only. Book before Friday. Check the Travel section for the latest deals.",t:"4h ago",n:false},
-];
 
 // ─── TRANSLATIONS (English / Arabic) ────────────────────────────────────────
 const T={
