@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, createContext, useContext } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -305,8 +305,7 @@ function playNotifSound(){
     osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.4);
   }catch(e){}
 }
-const NotifCtx=React.createContext(null);
-// eslint-disable-next-line no-unused-vars
+const NotifCtx=createContext(null);
 function NotifProvider({userId,children}){
   const[notifs,setNotifs]=useState([]);
   const[toasts,setToasts]=useState([]);
@@ -347,7 +346,7 @@ function NotifProvider({userId,children}){
     </NotifCtx.Provider>
   );
 }
-function useNotif(){return React.useContext(NotifCtx)||{};}
+function useNotif(){return useContext(NotifCtx)||{};}
 function ToastStack(){
   const{toasts,setToasts,markRead}=useNotif();
   if(!toasts?.length)return null;
