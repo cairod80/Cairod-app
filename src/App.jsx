@@ -1957,9 +1957,7 @@ function MainApp({user,onLogout}){
   const[lang,setLang]=useState("en");
   const[groups,setGroups]=useState(GROUPS);
   const[openGroup,setOpenGroup]=useState(null); // group detail view
-  const[notifDetail,setNotifDetail]=useState(null);
   const[listings,setListings]=useState(DATA); // starts with mock, replaced by Supabase
-  const[notifications,setNotifications]=useState(NOTIFS); // starts with mock
   const[qaList,setQaList]=useState(QA);
   const t=T[lang];
 
@@ -2061,7 +2059,6 @@ function MainApp({user,onLogout}){
   };
   const firstReviewDone=(()=>{try{return localStorage.getItem("xairod_first_review_done")==="1";}catch(e){return false;}})();
   const scrollRef=useRef(null);
-  const unread=NOTIFS.filter(n=>n.n).length;
   const planInfo=PLANS.find(p=>p.id===plan);
 
   useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=0;},[tab]);
