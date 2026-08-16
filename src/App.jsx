@@ -2309,13 +2309,17 @@ function MainApp({user,onLogout}){
   const[openGroup,setOpenGroup]=useState(null); // group detail view
   const[listings,setListings]=useState(DATA); // starts with mock, replaced by Supabase
   const[qaList,setQaList]=useState(QA);
+  const[universities,setUniversities]=useState(UNIVERSITIES); // starts with mock
   const t=T[lang];
 
   // ── LOAD ALL DATA + USER-SPECIFIC STATE ON STARTUP ────────────────────────
   useEffect(()=>{
-    // Public data — listings, groups, Q&A
+    // Public data — listings, groups, Q&A, universities
     supabase.from("listings").select("*").eq("status","active").order("rating",{ascending:false})
       .then(({data})=>{ if(data&&data.length>0) setListings(data.map(l=>({...l,cat:l.category,rc:l.review_count||0,top:l.top||false,african:l.african_owned||false,icon:l.icon||"🏢",price:l.price||"$$",verified:l.verified||false,images:l.images||[]}))); });
+
+    supabase.from("universities").select("*").eq("active",true).order("name",{ascending:true})
+      .then(({data})=>{ if(data&&data.length>0) setUniversities(data); });
 
     supabase.from("groups").select("*").order("member_count",{ascending:false})
       .then(({data})=>{ if(data&&data.length>0) setGroups(data.map(g=>({...g,joined:false}))); });
@@ -2892,14 +2896,14 @@ function MainApp({user,onLogout}){
               <div style={{fontSize:12,color:"var(--sub)",marginBottom:16}}>{t.findAgencyDesc||"Verified agencies matched to your university"}</div>
               <div style={{fontSize:11,fontWeight:800,color:"var(--sub)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>{t.universities||"Universities"}</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
-                {UNIVERSITIES.map(u=>(
+                {universities.map(u=>(
                   <button key={u.id} style={{padding:"6px 12px",borderRadius:20,border:"1.5px solid var(--bdr)",background:"var(--card)",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif",color:"var(--txt)"}}>
                     {u.emoji} {lang==="ar"&&u.name_ar?u.name_ar:u.name}
                   </button>
                 ))}
               </div>
               <div style={{fontSize:11,fontWeight:800,color:"var(--sub)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Verified Agencies</div>
-              {DATA.filter(d=>d.cat==="agency").map(item=>(
+              {listings.filter(d=>d.cat==="agency"||d.category==="agency").map(item=>(
                 <div key={item.id} className="card" style={{marginBottom:10,cursor:"pointer"}} onClick={()=>setDetail(item)}>
                   <div className="card-ico" style={{background:"rgba(36,113,163,0.1)"}}>{item.icon}</div>
                   <div style={{flex:1}}>
