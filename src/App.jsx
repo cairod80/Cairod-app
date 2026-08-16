@@ -1990,16 +1990,18 @@ function EditProfileModal({user, onClose, onSave}){
     setUploading(true);
     try{
       const compressed=await compressImage(file,600,0.8);
-      const localUrl=URL.createObjectURL(compressed);
-      setAvatarPreview(localUrl);
-      // ── Real Supabase upload (uncomment when supabase.js is wired in) ──
-      // const fileName = `${user.id}-${Date.now()}.jpg`;
-      // const { data, error } = await supabase.storage
-      //   .from('avatars')
-      //   .upload(fileName, compressed, { contentType: 'image/jpeg', upsert: true });
-      // if (error) throw error;
-      // const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      // setAvatarPreview(urlData.publicUrl);
+      // Upload to Supabase Storage
+      const fileName=`${user.id}-${Date.now()}.jpg`;
+      const{error:upErr}=await supabase.storage
+        .from("avatars")
+        .upload(fileName,compressed,{contentType:"image/jpeg",upsert:true});
+      if(upErr){
+        // Fallback to local preview if storage fails
+        setAvatarPreview(URL.createObjectURL(compressed));
+      }else{
+        const{data:urlData}=supabase.storage.from("avatars").getPublicUrl(fileName);
+        setAvatarPreview(urlData.publicUrl);
+      }
       setUploading(false);
     }catch(err){
       setUploading(false);
@@ -2860,14 +2862,21 @@ function MainApp({user,onLogout}){
               {!openGroup.joined?(
                 <div style={{textAlign:"center",padding:"24px",background:"var(--sand)",borderRadius:12}}>
                   <div style={{fontSize:28,marginBottom:8}}>🔒</div>
-                  <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>Join to see discussions</div>
-                  <div style={{fontSize:12,color:"var(--sub)"}}>Join this group to see posts and connect with members</div>
+                  <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>Join to access group chat</div>
+                  <div style={{fontSize:12,color:"var(--sub)"}}>Join this group to chat with members in real time</div>
                 </div>
               ):(
                 <div>
-                  <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>📢 Group discussions coming soon</div>
-                  <div style={{background:"var(--sand)",borderRadius:12,padding:16,fontSize:12,color:"var(--sub)",lineHeight:1.6}}>
-                    You are now a member of this group. In-group messaging and discussions will be available in the next update. Connect with other members via the Community tab for now.
+                  <div style={{background:"var(--gl,#E8F5EE)",border:"1.5px solid var(--g)",borderRadius:12,padding:16,textAlign:"center"}}>
+                    <div style={{fontSize:32,marginBottom:8}}>💬</div>
+                    <div style={{fontWeight:700,fontSize:14,marginBottom:6,color:"var(--g)"}}>Group Chat is Live</div>
+                    <div style={{fontSize:12,color:"var(--sub)",marginBottom:14,lineHeight:1.6}}>
+                      Chat with other members of {openGroup.name} in real time. Messages, questions, tips — all in one place.
+                    </div>
+                    <button onClick={()=>{setTab("chat");setOpenGroup(null);}}
+                      style={{padding:"11px 28px",borderRadius:20,border:"none",background:"var(--g)",color:"white",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                      Open Group Chat →
+                    </button>
                   </div>
                 </div>
               )}
