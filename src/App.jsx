@@ -437,7 +437,7 @@ function NotifBell({lang}){
 // ════════════════════════════════════════════════════════════════════════════
 const LANGUAGES={
   python:{label:"Python",comment:"# ",color:"#3572A5",sample:"# Write Python code here\nprint('Hello from Xairod!')\n\ndef greet(name):\n    return f'Welcome, {name}!'\n"},
-  javascript:{label:"JavaScript",comment:"// ",color:"#F7DF1E",sample:"// Write JavaScript here\nconsole.log('Hello from Xairod!');\n\nconst greet = (name) => {\n  return `Welcome, ${name}!`;\n};\n"},
+  javascript:{label:"JavaScript",comment:"// ",color:"#F7DF1E",sample:"// Write JavaScript here\nconsole.log('Hello from Xairod!');\n\nconst greet = (name) => {\n  return 'Welcome, ' + name + '!';\n};\n"},
   java:{label:"Java",comment:"// ",color:"#B07219",sample:"// Write Java here\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Hello from Xairod!\");\n    }\n}\n"},
   cpp:{label:"C++",comment:"// ",color:"#F34B7D",sample:"// Write C++ here\n#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << \"Hello from Xairod!\" << endl;\n    return 0;\n}\n"},
   sql:{label:"SQL",comment:"-- ",color:"#336791",sample:"-- Write SQL here\nSELECT * FROM profiles\nWHERE is_admin = true\nORDER BY created_at DESC;\n"},
