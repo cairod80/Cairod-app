@@ -792,39 +792,74 @@ function ChatScreen({user,lang}){
   const[chatInput,setChatInput]=useState("");
   const[sending,setSending]=useState(false);
   const[loadingMsgs,setLoadingMsgs]=useState(false);
+  const[joinedIds,setJoinedIds]=useState(new Set());
   const bottomRef=useRef(null);
   const inputRef=useRef(null);
+
+  // Load groups + user's memberships
   useEffect(()=>{
     supabase.from("groups").select("*").order("member_count",{ascending:false})
       .then(({data})=>{if(data)setChatGroups(data);});
-  },[]);
+    if(user?.id){
+      supabase.from("group_members").select("group_id").eq("user_id",user.id)
+        .then(({data})=>{if(data)setJoinedIds(new Set(data.map(m=>m.group_id)));});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id]);
+
+  // Load messages + subscribe to realtime when group selected
   useEffect(()=>{
     if(!activeGroup)return;
     setLoadingMsgs(true);setMessages([]);
     supabase.from("chat_messages").select("*,profiles(name,avatar_url)")
       .eq("group_id",activeGroup.id).order("created_at",{ascending:true}).limit(100)
       .then(({data})=>{if(data)setMessages(data);setLoadingMsgs(false);});
+
+    // Subscribe — receives messages from ALL users in real time
     const ch=supabase.channel("chat:"+activeGroup.id)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages",filter:"group_id=eq."+activeGroup.id},
         async p=>{
+          // Don't duplicate own messages (already added optimistically)
+          if(p.new.sender_id===user.id)return;
           const{data:profile}=await supabase.from("profiles").select("name,avatar_url").eq("id",p.new.sender_id).single();
           setMessages(prev=>[...prev,{...p.new,profiles:profile}]);
         }).subscribe();
     return()=>supabase.removeChannel(ch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[activeGroup?.id]);
+
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[messages]);
+
   const sendMsg=async()=>{
     const text=chatInput.trim();
     if(!text||!activeGroup||sending)return;
     setChatInput("");setSending(true);
+    // Optimistically add own message immediately
+    const tempMsg={
+      id:"temp-"+Date.now(),
+      group_id:activeGroup.id,
+      sender_id:user.id,
+      message_content:text,
+      created_at:new Date().toISOString(),
+      profiles:{name:user.name,avatar_url:user.avatarUrl}
+    };
+    setMessages(prev=>[...prev,tempMsg]);
     await supabase.from("chat_messages").insert({group_id:activeGroup.id,sender_id:user.id,message_content:text});
     setSending(false);inputRef.current?.focus();
   };
-  const joinGroup=async g=>{
-    await supabase.from("group_members").upsert({user_id:user.id,group_id:g.id});
+
+  const openGroup=async g=>{
+    // Ensure user is a member before opening chat
+    const alreadyJoined=joinedIds.has(g.id);
+    if(!alreadyJoined){
+      await supabase.from("group_members").upsert({user_id:user.id,group_id:g.id});
+      setJoinedIds(prev=>new Set([...prev,g.id]));
+      // Update local member count
+      setChatGroups(prev=>prev.map(x=>x.id===g.id?{...x,member_count:(x.member_count||0)+1}:x));
+    }
     setActiveGroup(g);
   };
+
   const fmt=ts=>new Date(ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
   const isMine=m=>m.sender_id===user.id;
   return(
@@ -835,12 +870,12 @@ function ChatScreen({user,lang}){
         </div>
         <div style={{flex:1,overflowY:"auto"}}>
           {chatGroups.map(g=>(
-            <div key={g.id} onClick={()=>joinGroup(g)} style={{padding:"10px 12px",cursor:"pointer",background:activeGroup?.id===g.id?"var(--gl,#E8F5EE)":"transparent",borderBottom:"1px solid var(--bdr)",borderLeft:activeGroup?.id===g.id?"3px solid var(--g)":"3px solid transparent"}}>
+            <div key={g.id} onClick={()=>openGroup(g)} style={{padding:"10px 12px",cursor:"pointer",background:activeGroup?.id===g.id?"var(--gl,#E8F5EE)":"transparent",borderBottom:"1px solid var(--bdr)",borderLeft:activeGroup?.id===g.id?"3px solid var(--g)":"3px solid transparent"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:18}}>{g.emoji||"💬"}</span>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:activeGroup?.id===g.id?"var(--g)":"var(--txt)"}}>{lang==="ar"&&g.name_ar?g.name_ar:g.name}</div>
-                  <div style={{fontSize:9,color:"var(--sub)"}}>👥 {(g.member_count||0).toLocaleString()}</div>
+                  <div style={{fontSize:9,color:"var(--sub)"}}>👥 {(g.member_count||0).toLocaleString()}{joinedIds.has(g.id)&&<span style={{color:"var(--g)",marginLeft:4}}>✓</span>}</div>
                 </div>
               </div>
             </div>
@@ -2318,7 +2353,7 @@ function MainApp({user,onLogout}){
     supabase.from("listings").select("*").eq("status","active").order("rating",{ascending:false})
       .then(({data})=>{ if(data&&data.length>0) setListings(data.map(l=>({...l,cat:l.category,rc:l.review_count||0,top:l.top||false,african:l.african_owned||false,icon:l.icon||"🏢",price:l.price||"$$",verified:l.verified||false,images:l.images||[]}))); });
 
-    supabase.from("universities").select("*").eq("active",true).order("name",{ascending:true})
+    supabase.from("universities").select("*").order("name",{ascending:true})
       .then(({data})=>{ if(data&&data.length>0) setUniversities(data); });
 
     supabase.from("groups").select("*").order("member_count",{ascending:false})
