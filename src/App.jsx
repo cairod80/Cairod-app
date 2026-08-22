@@ -793,7 +793,7 @@ function ChatScreen({user,lang}){
   const[sending,setSending]=useState(false);
   const[loadingMsgs,setLoadingMsgs]=useState(false);
   const[joinedIds,setJoinedIds]=useState(new Set());
-  const[seenIds,setSeenIds]=useState(new Set());
+  const[seenIds,setSeenIds]=useState(new Set()); // eslint-disable-line no-unused-vars
   const bottomRef=useRef(null);
   const inputRef=useRef(null);
 
