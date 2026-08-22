@@ -793,10 +793,10 @@ function ChatScreen({user,lang}){
   const[sending,setSending]=useState(false);
   const[loadingMsgs,setLoadingMsgs]=useState(false);
   const[joinedIds,setJoinedIds]=useState(new Set());
+  const[seenIds,setSeenIds]=useState(new Set());
   const bottomRef=useRef(null);
   const inputRef=useRef(null);
 
-  // Load groups + user's memberships
   useEffect(()=>{
     supabase.from("groups").select("*").order("member_count",{ascending:false})
       .then(({data})=>{if(data)setChatGroups(data);});
@@ -807,24 +807,45 @@ function ChatScreen({user,lang}){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id]);
 
-  // Load messages + subscribe to realtime when group selected
   useEffect(()=>{
-    if(!activeGroup)return;
-    setLoadingMsgs(true);setMessages([]);
-    supabase.from("chat_messages").select("*,profiles(name,avatar_url)")
-      .eq("group_id",activeGroup.id).order("created_at",{ascending:true}).limit(100)
-      .then(({data})=>{if(data)setMessages(data);setLoadingMsgs(false);});
+    if(!activeGroup||!user?.id)return;
+    setLoadingMsgs(true);
+    setMessages([]);
+    setSeenIds(new Set());
 
-    // Subscribe — receives messages from ALL users in real time
-    const ch=supabase.channel("chat:"+activeGroup.id)
+    // 1. Join group first — RLS needs this before realtime works
+    supabase.from("group_members").upsert({user_id:user.id,group_id:activeGroup.id}).then(()=>{
+      // 2. Load existing messages
+      supabase.from("chat_messages").select("*,profiles(name,avatar_url)")
+        .eq("group_id",activeGroup.id).order("created_at",{ascending:true}).limit(100)
+        .then(({data})=>{
+          if(data){
+            const ids=new Set(data.map(m=>m.id));
+            setSeenIds(ids);
+            setMessages(data);
+          }
+          setLoadingMsgs(false);
+        });
+    });
+
+    // 3. Subscribe after join — unique channel per user+group
+    const chName="chat:"+activeGroup.id+":"+user.id;
+    const ch=supabase.channel(chName)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages",filter:"group_id=eq."+activeGroup.id},
-        async p=>{
-          // Don't duplicate own messages (already added optimistically)
-          if(p.new.sender_id===user.id)return;
-          const{data:profile}=await supabase.from("profiles").select("name,avatar_url").eq("id",p.new.sender_id).single();
-          setMessages(prev=>[...prev,{...p.new,profiles:profile}]);
+        p=>{
+          const m=p.new;
+          setSeenIds(prev=>{
+            if(prev.has(m.id))return prev; // already shown
+            const next=new Set(prev);next.add(m.id);
+            // Fetch sender profile then add message
+            supabase.from("profiles").select("name,avatar_url").eq("id",m.sender_id).single()
+              .then(({data:profile})=>{
+                setMessages(prev2=>[...prev2,{...m,profiles:profile}]);
+              });
+            return next;
+          });
         }).subscribe();
-    return()=>supabase.removeChannel(ch);
+    return()=>{supabase.removeChannel(ch);};
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[activeGroup?.id]);
 
@@ -834,27 +855,20 @@ function ChatScreen({user,lang}){
     const text=chatInput.trim();
     if(!text||!activeGroup||sending)return;
     setChatInput("");setSending(true);
-    // Optimistically add own message immediately
-    const tempMsg={
-      id:"temp-"+Date.now(),
-      group_id:activeGroup.id,
-      sender_id:user.id,
-      message_content:text,
-      created_at:new Date().toISOString(),
-      profiles:{name:user.name,avatar_url:user.avatarUrl}
-    };
-    setMessages(prev=>[...prev,tempMsg]);
-    await supabase.from("chat_messages").insert({group_id:activeGroup.id,sender_id:user.id,message_content:text});
+    const{data:saved}=await supabase.from("chat_messages")
+      .insert({group_id:activeGroup.id,sender_id:user.id,message_content:text})
+      .select("*").single();
+    if(saved){
+      // Register ID so realtime doesn't double-add it
+      setSeenIds(prev=>{const n=new Set(prev);n.add(saved.id);return n;});
+      setMessages(prev=>[...prev,{...saved,profiles:{name:user.name,avatar_url:user.avatarUrl}}]);
+    }
     setSending(false);inputRef.current?.focus();
   };
 
   const openGroup=async g=>{
-    // Ensure user is a member before opening chat
-    const alreadyJoined=joinedIds.has(g.id);
-    if(!alreadyJoined){
-      await supabase.from("group_members").upsert({user_id:user.id,group_id:g.id});
+    if(!joinedIds.has(g.id)){
       setJoinedIds(prev=>new Set([...prev,g.id]));
-      // Update local member count
       setChatGroups(prev=>prev.map(x=>x.id===g.id?{...x,member_count:(x.member_count||0)+1}:x));
     }
     setActiveGroup(g);
