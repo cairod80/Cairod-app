@@ -447,30 +447,6 @@ const LANGUAGES={
 // ════════════════════════════════════════════════════════════════════════════
 // HEALTH SCREEN — Frame 1: Directory + Book + Frame 2: Triage Concierge
 // ════════════════════════════════════════════════════════════════════════════
-const HEALTH_TYPES=[
-  {id:"all",     label:"All",           emoji:"🏥"},
-  {id:"clinic",  label:"Clinic",        emoji:"🏥"},
-  {id:"doctor",  label:"Doctor",        emoji:"👨‍⚕️"},
-  {id:"lab",     label:"Lab Test",      emoji:"🧪"},
-  {id:"pharmacy",label:"Pharmacy",      emoji:"💊"},
-  {id:"mental",  label:"Mental Health", emoji:"🧠"},
-  {id:"emergency",label:"Urgent Care",  emoji:"🚨"},
-];
-
-const TRIAGE_TYPES=[
-  {id:"doctor",   emoji:"👨‍⚕️", label:"See a doctor or specialist"},
-  {id:"lab",      emoji:"🧪",  label:"Get a lab test or blood work"},
-  {id:"pharmacy", emoji:"💊",  label:"Find a pharmacy"},
-  {id:"mental",   emoji:"🧠",  label:"Mental health support"},
-  {id:"emergency",emoji:"🚨",  label:"Emergency or urgent care"},
-  {id:"other",    emoji:"🌿",  label:"Something else"},
-];
-
-const URGENCY=[
-  {id:"routine", emoji:"📅", label:"No rush — within a week",   color:"#0A6B3E", bg:"rgba(10,107,62,0.08)"},
-  {id:"soon",    emoji:"⚡", label:"Soon — within 1–2 days",    color:"#C8861A", bg:"rgba(200,134,26,0.08)"},
-  {id:"urgent",  emoji:"🚨", label:"Urgent — today if possible", color:"#C0392B", bg:"rgba(192,57,43,0.08)"},
-];
 
 function HealthScreen({user,lang,listings,setConnectListing}){
   const[mode,setMode]=useState("home");
