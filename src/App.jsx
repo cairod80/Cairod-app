@@ -444,6 +444,286 @@ const LANGUAGES={
   sql:{label:"SQL",comment:"-- ",color:"#336791",sample:"-- Write SQL here\nSELECT * FROM profiles\nWHERE is_admin = true\nORDER BY created_at DESC;\n"},
 };
 
+// ════════════════════════════════════════════════════════════════════════════
+// HEALTH SCREEN — Frame 1: Directory + Book + Frame 2: Triage Concierge
+// ════════════════════════════════════════════════════════════════════════════
+const HEALTH_TYPES=[
+  {id:"all",     label:"All",           emoji:"🏥"},
+  {id:"clinic",  label:"Clinic",        emoji:"🏥"},
+  {id:"doctor",  label:"Doctor",        emoji:"👨‍⚕️"},
+  {id:"lab",     label:"Lab Test",      emoji:"🧪"},
+  {id:"pharmacy",label:"Pharmacy",      emoji:"💊"},
+  {id:"mental",  label:"Mental Health", emoji:"🧠"},
+  {id:"emergency",label:"Urgent Care",  emoji:"🚨"},
+];
+
+const TRIAGE_TYPES=[
+  {id:"doctor",   emoji:"👨‍⚕️", label:"See a doctor or specialist"},
+  {id:"lab",      emoji:"🧪",  label:"Get a lab test or blood work"},
+  {id:"pharmacy", emoji:"💊",  label:"Find a pharmacy"},
+  {id:"mental",   emoji:"🧠",  label:"Mental health support"},
+  {id:"emergency",emoji:"🚨",  label:"Emergency or urgent care"},
+  {id:"other",    emoji:"🌿",  label:"Something else"},
+];
+
+const URGENCY=[
+  {id:"routine", emoji:"📅", label:"No rush — within a week",   color:"#0A6B3E", bg:"rgba(10,107,62,0.08)"},
+  {id:"soon",    emoji:"⚡", label:"Soon — within 1–2 days",    color:"#C8861A", bg:"rgba(200,134,26,0.08)"},
+  {id:"urgent",  emoji:"🚨", label:"Urgent — today if possible", color:"#C0392B", bg:"rgba(192,57,43,0.08)"},
+];
+
+function HealthScreen({user,lang,listings,setConnectListing}){
+  const[mode,setMode]=useState("home"); // home | browse | triage
+  const[typeFilter,setTypeFilter]=useState("all");
+  const[triageStep,setTriageStep]=useState(1);
+  const[triageType,setTriageType]=useState(null);
+  const[triageUrgency,setTriageUrgency]=useState(null);
+  const[triageDetails,setTriageDetails]=useState("");
+  const[triageHomeVisit,setTriageHomeVisit]=useState(false);
+  const[triageMatches,setTriageMatches]=useState([]);
+
+  // Filter health listings from Supabase listings
+  const healthListings=listings.filter(l=>
+    l.cat==="health"||l.category==="health"||
+    l.cat==="pharmacy"||l.category==="pharmacy"||
+    HEALTH_TYPES.slice(1).some(t=>
+      (l.name||"").toLowerCase().includes(t.id)||
+      (l.description||"").toLowerCase().includes(t.id)
+    )
+  );
+
+  // Apply type filter
+  const filtered=typeFilter==="all"?healthListings:
+    healthListings.filter(l=>{
+      const text=(l.name+l.description+l.cat+l.category).toLowerCase();
+      return text.includes(typeFilter);
+    });
+
+  // Triage matching — find best providers for triage type
+  const runTriage=()=>{
+    const matches=healthListings.filter(l=>{
+      if(triageType==="all")return true;
+      const text=(l.name+l.description+l.cat+l.category).toLowerCase();
+      return text.includes(triageType)||l.cat==="health";
+    }).slice(0,3);
+    // If not enough health listings, show all health listings
+    setTriageMatches(matches.length>0?matches:healthListings.slice(0,3));
+    setTriageStep(3);
+  };
+
+  // ── HOME ──────────────────────────────────────────────────────────────────
+  if(mode==="home")return(
+    <div style={{padding:"0 17px 20px"}}>
+      {/* Header */}
+      <div style={{marginBottom:16}}>
+        <div style={{display:"inline-block",background:"#FDECEA",color:"#C0392B",fontSize:10,fontWeight:800,padding:"4px 10px",borderRadius:20,marginBottom:10,letterSpacing:0.5}}>🏥 HEALTH SERVICES</div>
+        <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:900,lineHeight:1.15,marginBottom:6}}>Find Healthcare<br/>in Cairo</div>
+        <div style={{fontSize:12,color:"var(--sub)",lineHeight:1.6}}>Verified clinics and doctors for Africans. Your request goes through Xairod — your info stays private.</div>
+      </div>
+
+      {/* Two main paths */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+        <button onClick={()=>setMode("browse")} style={{background:"#C0392B",border:"none",borderRadius:14,padding:"16px 12px",textAlign:"left",cursor:"pointer",color:"white"}}>
+          <div style={{fontSize:24,marginBottom:6}}>🔍</div>
+          <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:14,marginBottom:3}}>Browse Providers</div>
+          <div style={{fontSize:10,opacity:0.8,lineHeight:1.4}}>See all verified clinics, doctors and labs</div>
+        </button>
+        <button onClick={()=>{setMode("triage");setTriageStep(1);}} style={{background:"var(--g)",border:"none",borderRadius:14,padding:"16px 12px",textAlign:"left",cursor:"pointer",color:"white"}}>
+          <div style={{fontSize:24,marginBottom:6}}>🤖</div>
+          <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:14,marginBottom:3}}>Health Assistant</div>
+          <div style={{fontSize:10,opacity:0.8,lineHeight:1.4}}>Answer 3 questions, we find your match</div>
+        </button>
+      </div>
+
+      {/* Service types quick access */}
+      <div style={{fontSize:11,fontWeight:800,color:"var(--sub)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Quick Access</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:20}}>
+        {HEALTH_TYPES.slice(1).map(t=>(
+          <button key={t.id} onClick={()=>{setMode("browse");setTypeFilter(t.id);}}
+            style={{background:"var(--card)",border:"1.5px solid var(--bdr)",borderRadius:12,padding:"12px 8px",textAlign:"center",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+            <span style={{fontSize:22}}>{t.emoji}</span>
+            <span style={{fontSize:10,fontWeight:700,color:"var(--txt)"}}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Important note */}
+      <div style={{background:"rgba(192,57,43,0.06)",border:"1px solid rgba(192,57,43,0.15)",borderRadius:12,padding:"12px 14px",display:"flex",gap:8}}>
+        <span style={{fontSize:16,flexShrink:0}}>⚠️</span>
+        <div style={{fontSize:11,color:"var(--txt)",lineHeight:1.6}}>
+          <strong>For emergencies,</strong> call 123 (Egyptian emergency) or go directly to the nearest hospital. Xairod is for non-emergency health connections.
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── BROWSE (Frame 1) ──────────────────────────────────────────────────────
+  if(mode==="browse")return(
+    <div style={{padding:"0 17px 20px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <button onClick={()=>setMode("home")} style={{background:"none",border:"none",color:"var(--g)",fontWeight:700,fontSize:13,cursor:"pointer",padding:0,fontFamily:"'Outfit',sans-serif"}}>← Back</button>
+        <div style={{fontFamily:"'Fraunces',serif",fontWeight:700,fontSize:16}}>Health Providers</div>
+      </div>
+
+      {/* Type filter chips */}
+      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:8,marginBottom:14}}>
+        {HEALTH_TYPES.map(t=>(
+          <button key={t.id} onClick={()=>setTypeFilter(t.id)}
+            style={{padding:"6px 12px",borderRadius:20,border:"1.5px solid",borderColor:typeFilter===t.id?"#C0392B":"var(--bdr)",background:typeFilter===t.id?"#C0392B":"var(--card)",color:typeFilter===t.id?"white":"var(--txt)",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap",flexShrink:0}}>
+            {t.emoji} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Provider cards */}
+      {filtered.length===0?(
+        <div style={{textAlign:"center",padding:"40px 0",color:"var(--sub)"}}>
+          <div style={{fontSize:36,marginBottom:10}}>🏥</div>
+          <div style={{fontWeight:700,marginBottom:4}}>No health providers yet</div>
+          <div style={{fontSize:12}}>Your ops manager can add verified clinics via the admin panel</div>
+        </div>
+      ):filtered.map(item=>(
+        <div key={item.id} style={{background:"var(--card)",border:"1.5px solid var(--bdr)",borderRadius:14,padding:"14px",marginBottom:10,display:"flex",gap:12,alignItems:"flex-start"}}>
+          <div style={{width:46,height:46,borderRadius:12,background:"#FDECEA",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+            {item.icon||"🏥"}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2,flexWrap:"wrap"}}>
+              <div style={{fontWeight:700,fontSize:13}}>{lang==="ar"&&item.name_ar?item.name_ar:item.name}</div>
+              {item.verified&&<span style={{background:"#E8F5EE",color:"var(--g)",fontSize:8,fontWeight:800,padding:"2px 5px",borderRadius:4}}>✓ Verified</span>}
+            </div>
+            <div style={{fontSize:11,color:"var(--sub)",marginBottom:4}}>{item.city}</div>
+            {item.rating>0&&<div style={{fontSize:10,color:"#C8861A"}}>{"★".repeat(Math.round(item.rating))} {item.rating} · {item.review_count||0} reviews</div>}
+            {item.description&&<div style={{fontSize:11,color:"var(--sub)",marginTop:4,lineHeight:1.5,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{item.description}</div>}
+          </div>
+          <button onClick={()=>setConnectListing(item)}
+            style={{padding:"8px 14px",borderRadius:20,border:"none",background:"#C0392B",color:"white",fontSize:11,fontWeight:800,cursor:"pointer",fontFamily:"'Outfit',sans-serif",flexShrink:0,marginTop:2}}>
+            Book →
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  // ── TRIAGE CONCIERGE (Frame 2) ────────────────────────────────────────────
+  if(mode==="triage"){
+    const progress=(triageStep/3)*100;
+    return(
+      <div style={{padding:"0 17px 20px"}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <button onClick={()=>triageStep===1?setMode("home"):setTriageStep(s=>s-1)} style={{background:"none",border:"none",color:"var(--g)",fontWeight:700,fontSize:13,cursor:"pointer",padding:0,fontFamily:"'Outfit',sans-serif"}}>← Back</button>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:"'Fraunces',serif",fontWeight:700,fontSize:14}}>Health Assistant</div>
+            <div style={{fontSize:10,color:"var(--sub)"}}>Step {triageStep} of 3</div>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{height:4,background:"var(--bdr)",borderRadius:2,marginBottom:16}}>
+          <div style={{height:"100%",background:"var(--g)",borderRadius:2,width:progress+"%",transition:"width 0.3s"}}/>
+        </div>
+
+        {/* Step 1 — What type */}
+        {triageStep===1&&(
+          <>
+            <div style={{background:"rgba(10,107,62,0.07)",border:"1px solid rgba(10,107,62,0.15)",borderRadius:12,padding:"11px 13px",marginBottom:16,fontSize:12,lineHeight:1.6}}>
+              <strong>🤖 Health Assistant:</strong> Hi! I'll help you find the right health support in Cairo. What type of help do you need?
+            </div>
+            {TRIAGE_TYPES.map(t=>(
+              <button key={t.id} onClick={()=>setTriageType(t.id)}
+                style={{width:"100%",padding:"12px 14px",borderRadius:11,border:"1.5px solid",borderColor:triageType===t.id?"var(--g)":"var(--bdr)",background:triageType===t.id?"var(--gl,#E8F5EE)":"var(--card)",color:triageType===t.id?"var(--g)":"var(--txt)",fontSize:13,fontWeight:triageType===t.id?700:500,cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:20}}>{t.emoji}</span>{t.label}
+              </button>
+            ))}
+            <button onClick={()=>triageType&&setTriageStep(2)} disabled={!triageType}
+              style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:triageType?"var(--g)":"var(--sand2)",color:triageType?"white":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:14,cursor:triageType?"pointer":"default",marginTop:4}}>
+              Continue →
+            </button>
+          </>
+        )}
+
+        {/* Step 2 — Urgency + Details */}
+        {triageStep===2&&(
+          <>
+            <div style={{background:"rgba(10,107,62,0.07)",border:"1px solid rgba(10,107,62,0.15)",borderRadius:12,padding:"11px 13px",marginBottom:16,fontSize:12,lineHeight:1.6}}>
+              <strong>🤖 Health Assistant:</strong> Got it — {TRIAGE_TYPES.find(t=>t.id===triageType)?.label}. How urgent is this?
+            </div>
+            {URGENCY.map(u=>(
+              <button key={u.id} onClick={()=>setTriageUrgency(u.id)}
+                style={{width:"100%",padding:"12px 14px",borderRadius:11,border:"1.5px solid",borderColor:triageUrgency===u.id?u.color:"var(--bdr)",background:triageUrgency===u.id?u.bg:"var(--card)",color:triageUrgency===u.id?u.color:"var(--txt)",fontSize:13,fontWeight:triageUrgency===u.id?700:500,cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:20}}>{u.emoji}</span>{u.label}
+              </button>
+            ))}
+            <div style={{marginTop:6,marginBottom:6,fontSize:11,fontWeight:700,color:"var(--sub)"}}>Any specific details? (optional)</div>
+            <textarea value={triageDetails} onChange={e=>setTriageDetails(e.target.value)}
+              placeholder="e.g. I have a fever for 3 days, need blood test, speak English only…"
+              rows={3} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:12,resize:"none",outline:"none",color:"var(--txt)",marginBottom:10}}/>
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              <button onClick={()=>setTriageHomeVisit(true)}
+                style={{flex:1,padding:"9px",borderRadius:10,border:"1.5px solid",borderColor:triageHomeVisit?"var(--g)":"var(--bdr)",background:triageHomeVisit?"var(--gl,#E8F5EE)":"var(--card)",color:triageHomeVisit?"var(--g)":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                🏠 Home visit
+              </button>
+              <button onClick={()=>setTriageHomeVisit(false)}
+                style={{flex:1,padding:"9px",borderRadius:10,border:"1.5px solid",borderColor:!triageHomeVisit?"var(--g)":"var(--bdr)",background:!triageHomeVisit?"var(--gl,#E8F5EE)":"var(--card)",color:!triageHomeVisit?"var(--g)":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                🏥 I'll go in person
+              </button>
+            </div>
+            <button onClick={()=>{runTriage();}} disabled={!triageUrgency}
+              style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:triageUrgency?"var(--g)":"var(--sand2)",color:triageUrgency?"white":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:14,cursor:triageUrgency?"pointer":"default"}}>
+              Find Best Matches →
+            </button>
+          </>
+        )}
+
+        {/* Step 3 — Matched providers */}
+        {triageStep===3&&(
+          <>
+            <div style={{background:"rgba(10,107,62,0.07)",border:"1px solid rgba(10,107,62,0.15)",borderRadius:12,padding:"11px 13px",marginBottom:14,fontSize:12,lineHeight:1.6}}>
+              <strong>🤖 Health Assistant:</strong> I found <strong>{triageMatches.length} verified provider{triageMatches.length!==1?"s":""}</strong> that match your need. Tap one to connect through Xairod.
+            </div>
+            {triageMatches.length===0?(
+              <div style={{textAlign:"center",padding:"30px 0",color:"var(--sub)"}}>
+                <div style={{fontSize:36,marginBottom:10}}>🏥</div>
+                <div style={{fontWeight:700,marginBottom:4}}>No providers yet</div>
+                <div style={{fontSize:12}}>Check back soon — we're adding verified health partners</div>
+              </div>
+            ):triageMatches.map((item,i)=>(
+              <div key={item.id} style={{background:i===0?"var(--gl,#E8F5EE)":"var(--card)",border:"1.5px solid",borderColor:i===0?"var(--g)":"var(--bdr)",borderRadius:14,padding:"13px",marginBottom:10,position:"relative"}}>
+                {i===0&&<div style={{position:"absolute",top:-8,right:12,background:"var(--g)",color:"white",fontSize:8,fontWeight:800,padding:"2px 8px",borderRadius:10}}>BEST MATCH</div>}
+                <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                  <div style={{width:40,height:40,borderRadius:10,background:"#FDECEA",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{item.icon||"🏥"}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:12,marginBottom:2}}>{item.name}{item.verified&&<span style={{background:"#E8F5EE",color:"var(--g)",fontSize:8,fontWeight:800,padding:"1px 5px",borderRadius:4,marginLeft:4}}>✓</span>}</div>
+                    <div style={{fontSize:10,color:"var(--sub)",marginBottom:3}}>{item.city}</div>
+                    {item.rating>0&&<div style={{fontSize:10,color:"#C8861A"}}>{"★".repeat(Math.round(item.rating))} {item.rating}</div>}
+                    <div style={{fontSize:10,color:"var(--g)",fontWeight:700,marginTop:3}}>
+                      {triageUrgency==="urgent"?"⚡ Urgent care available":triageUrgency==="soon"?"📅 Available soon":"📋 Accepting appointments"}
+                      {triageHomeVisit&&" · 🏠 Home visits"}
+                    </div>
+                  </div>
+                  <button onClick={()=>setConnectListing({
+                    ...item,
+                    _triageContext:{type:triageType,urgency:triageUrgency,details:triageDetails,homeVisit:triageHomeVisit}
+                  })}
+                    style={{padding:"8px 14px",borderRadius:20,border:"none",background:i===0?"var(--g)":"#C0392B",color:"white",fontSize:11,fontWeight:800,cursor:"pointer",fontFamily:"'Outfit',sans-serif",flexShrink:0}}>
+                    Select
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div style={{fontSize:10,color:"var(--sub)",textAlign:"center",marginTop:6,lineHeight:1.5}}>
+              All providers verified by Xairod · Your contact info is only shared after you confirm
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function StudyRoom({user,lang}){
   const[rooms,setRooms]=useState([]);
   const[activeRoom,setActiveRoom]=useState(null);
@@ -984,15 +1264,21 @@ function ConnectModal({listing, user, lang, onClose}){
     setErr("");setLoading(true);
     try{
       // Save lead to Supabase — ref is auto-generated by trigger
+      const isHealth=(listing?.cat||listing?.category)==="health"||listing?._triageContext;
+      const triageCtx=listing?._triageContext;
+      const fullDetail=triageCtx?
+        `Type: ${triageCtx.type}\nUrgency: ${triageCtx.urgency}\nDetails: ${triageCtx.details||"N/A"}\nHome visit: ${triageCtx.homeVisit?"Yes":"No"}\nAdditional: ${what.trim()}`:
+        what.trim();
+
       const{data,error}=await supabase.from("leads").insert({
         user_id:user?.id||null,
         listing_id:listing?.id||null,
         listing_name:listing?.name||"",
-        listing_category:listing?.cat||listing?.category||"",
+        listing_category:isHealth?"health":(listing?.cat||listing?.category||""),
         user_name:user?.name||"",
         user_whatsapp:whatsapp.trim()||null,
-        what_i_need:what.trim(),
-        when_needed:when.trim()||null,
+        what_i_need:fullDetail,
+        when_needed:when.trim()||triageCtx?.urgency||null,
         budget:budget.trim()||null,
         status:"new",
       }).select("ref").single();
@@ -1003,7 +1289,9 @@ function ConnectModal({listing, user, lang, onClose}){
       setLeadRef(ref);
 
       // Build pre-filled WhatsApp message to Xairod's number
-      const msg=`Hi Xairod! 👋\n\nI need help connecting with *${listing?.name}*.\n\n📋 Reference: *${ref}*\n\n🔍 What I need:\n${what.trim()}${when?"\n\n📅 When: "+when:""}${budget?"\n\n💰 Budget: "+budget:""}\n\nPlease help me connect. Thank you!`;
+      const isHlth=(listing?.cat||listing?.category)==="health"||listing?._triageContext;
+      const refPrefix=isHlth?"🏥 Health Request":"🔍 What I need";
+      const msg=`Hi Xairod! 👋\n\nI need help connecting with *${listing?.name}*.\n\n📋 Reference: *${ref}*\n\n${refPrefix}:\n${fullDetail||what.trim()}${when?"\n\n📅 When: "+when:""}${budget?"\n\n💰 Budget: "+budget:""}\n\nPlease help me connect. Thank you!`;
 
       const waUrl=`https://wa.me/${XAIROD_WA_NUMBER}?text=${encodeURIComponent(msg)}`;
 
@@ -2156,6 +2444,7 @@ const NAV=[
   {id:"groups",label:"Groups",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.85"/></svg>},
   {id:"chat",label:"Chat",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>},
   {id:"study",label:"Study",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>},
+  {id:"health",label:"Health",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>},
   {id:"profile",label:"Profile",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>},
 ];
 
@@ -3144,6 +3433,7 @@ function MainApp({user,onLogout}){
 
         {tab==="chat"&&<div style={{padding:"0 17px"}}><ChatScreen user={user} lang={lang}/></div>}
         {tab==="study"&&<StudyRoom user={user} lang={lang}/>}
+        {tab==="health"&&<HealthScreen user={user} lang={lang} listings={listings} setConnectListing={setConnectListing}/>}
 
         {/* ── MODALS ── */}
         {modal==="avoid"&&<SheetModal tips={AVOID} title="⚠️ What to Avoid" onClose={()=>setModal(null)}/>}
