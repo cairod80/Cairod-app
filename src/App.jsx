@@ -448,6 +448,203 @@ const LANGUAGES={
 // HEALTH SCREEN — Frame 1: Directory + Book + Frame 2: Triage Concierge
 // ════════════════════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════════════════════
+// MY REQUESTS SCREEN — user sees requests, quotes, accepts deals, enters code
+// ════════════════════════════════════════════════════════════════════════════
+function MyRequestsScreen({user,lang,requests,onRefresh}){
+  const[filter,setFilter]=useState("all");
+  const[confCode,setConfCode]=useState({});
+  const[confLoading,setConfLoading]=useState({});
+  const[confMsg,setConfMsg]=useState({});
+
+  const filtered=filter==="all"?requests:requests.filter(r=>r.status===filter);
+
+  const STATUS_COLOR={
+    open:"#2471A3",quoted:"#C8861A",in_progress:"#8E44AD",
+    awaiting_confirmation:"#C0392B",completed:"var(--g)",
+    declined:"var(--sub)",cancelled:"var(--sub)"
+  };
+  const STATUS_LABEL={
+    open:"Waiting for quote",quoted:"Quote received — action needed",
+    in_progress:"In progress",awaiting_confirmation:"Enter confirmation code",
+    completed:"Completed ✓",declined:"Declined",cancelled:"Cancelled"
+  };
+
+  const acceptQuote=async(req,quote)=>{
+    await supabase.from("quotes").update({status:"accepted"}).eq("id",quote.id);
+    await supabase.from("service_requests").update({status:"in_progress"}).eq("id",req.id);
+    await supabase.from("bookings").insert({
+      request_id:req.id,quote_id:quote.id,user_id:user.id,
+      business_id:quote.business_id,service_description:req.what_i_need,
+      gross_amount:quote.price,commission_rate:quote.commission_rate||12,
+      commission_amount:quote.commission_amount,payout_amount:quote.payout_amount,
+      status:"in_progress",
+    });
+    onRefresh();
+  };
+
+  const declineQuote=async(quote,reqId)=>{
+    await supabase.from("quotes").update({status:"declined"}).eq("id",quote.id);
+    await supabase.from("service_requests").update({status:"open"}).eq("id",reqId);
+    onRefresh();
+  };
+
+  const confirmCode=async(req)=>{
+    const code=(confCode[req.id]||"").trim().toUpperCase();
+    if(!code){setConfMsg({...confMsg,[req.id]:"Please enter the code."});return;}
+    setConfLoading({...confLoading,[req.id]:true});
+    const{data:booking}=await supabase.from("bookings")
+      .select("*").eq("confirmation_code",code).eq("user_id",user.id).single();
+    if(!booking){
+      setConfMsg({...confMsg,[req.id]:"❌ Invalid code. Check the code from the business."});
+      setConfLoading({...confLoading,[req.id]:false});return;
+    }
+    await supabase.from("bookings").update({status:"completed",completed_at:new Date().toISOString()}).eq("id",booking.id);
+    await supabase.from("service_requests").update({status:"completed"}).eq("id",req.id);
+    setConfMsg({...confMsg,[req.id]:"✅ Confirmed! Payment released to business."});
+    setConfLoading({...confLoading,[req.id]:false});
+    setTimeout(()=>onRefresh(),2000);
+  };
+
+  return(
+    <div style={{padding:"0 17px 80px"}}>
+      <div style={{paddingTop:16,marginBottom:16}}>
+        <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:20,marginBottom:4}}>My Requests</div>
+        <div style={{fontSize:12,color:"var(--sub)",lineHeight:1.5}}>All your connections with businesses. Accept quotes, track progress, and confirm completed services.</div>
+      </div>
+
+      {/* Filter chips */}
+      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:8,marginBottom:16}}>
+        {[
+          {k:"all",l:"All"},
+          {k:"open",l:"Waiting"},
+          {k:"quoted",l:"Quote Received"},
+          {k:"in_progress",l:"In Progress"},
+          {k:"awaiting_confirmation",l:"Needs Code"},
+          {k:"completed",l:"Done"},
+        ].map(f=>(
+          <button key={f.k} onClick={()=>setFilter(f.k)}
+            style={{padding:"5px 12px",borderRadius:20,border:"1.5px solid",borderColor:filter===f.k?"var(--g)":"var(--bdr)",background:filter===f.k?"var(--g)":"var(--card)",color:filter===f.k?"white":"var(--sub)",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap",flexShrink:0}}>
+            {f.l}{f.k!=="all"&&` (${requests.filter(r=>r.status===f.k).length})`}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length===0?(
+        <div style={{textAlign:"center",padding:"40px 0"}}>
+          <div style={{fontSize:44,marginBottom:12}}>📭</div>
+          <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:18,marginBottom:6,color:"var(--sub)"}}>No requests yet</div>
+          <div style={{fontSize:12,color:"var(--sub)",lineHeight:1.6,maxWidth:280,margin:"0 auto"}}>
+            When you tap "Connect via Xairod" on any listing, your request appears here. Businesses will send you quotes which you can accept or decline.
+          </div>
+        </div>
+      ):filtered.map(req=>{
+        const quotes=req.quotes||[];
+        const pendingQuote=quotes.find(q=>q.status==="pending");
+        const needsCode=req.status==="awaiting_confirmation";
+
+        return(
+          <div key={req.id} style={{background:"var(--card)",border:"1.5px solid",borderColor:needsCode?"#C0392B":pendingQuote?"#C8861A":"var(--bdr)",borderRadius:14,padding:14,marginBottom:12,boxShadow:needsCode?"0 0 0 3px rgba(192,57,43,0.1)":pendingQuote?"0 0 0 3px rgba(200,134,26,0.08)":"none"}}>
+
+            {/* Header */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
+              <div>
+                <div style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"var(--g)",background:"rgba(10,107,62,0.1)",padding:"2px 7px",borderRadius:4,display:"inline-block",marginBottom:4}}>{req.ref||"REQ-"+req.id?.slice(0,6)}</div>
+                <div style={{fontSize:12,fontWeight:800,color:"var(--txt)"}}>{req.listing_name||"Request"}</div>
+              </div>
+              <span style={{background:(STATUS_COLOR[req.status]||"var(--sub)")+"18",color:STATUS_COLOR[req.status]||"var(--sub)",fontSize:9,fontWeight:800,padding:"3px 8px",borderRadius:20,textTransform:"uppercase",letterSpacing:0.5,flexShrink:0,marginTop:2}}>
+                {STATUS_LABEL[req.status]||req.status}
+              </span>
+            </div>
+
+            {/* What they need */}
+            <div style={{fontSize:12,color:"var(--txt)",lineHeight:1.6,marginBottom:8,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{req.what_i_need}</div>
+
+            <div style={{display:"flex",gap:10,marginBottom:10,fontSize:10,color:"var(--sub)",flexWrap:"wrap"}}>
+              {req.when_needed&&<span>📅 {req.when_needed}</span>}
+              {req.budget&&<span>💰 {req.budget}</span>}
+              <span style={{marginLeft:"auto"}}>🕐 {new Date(req.created_at).toLocaleDateString()}</span>
+            </div>
+
+            {/* Waiting for quote */}
+            {req.status==="open"&&(
+              <div style={{background:"rgba(36,113,163,0.08)",border:"1px solid rgba(36,113,163,0.15)",borderRadius:10,padding:"10px 12px",fontSize:11,color:"#2471A3",fontWeight:600}}>
+                ⏳ Waiting for a business to respond with a quote…
+              </div>
+            )}
+
+            {/* Quote received */}
+            {pendingQuote&&req.status==="quoted"&&(
+              <div style={{background:"rgba(200,134,26,0.08)",border:"1.5px solid rgba(200,134,26,0.2)",borderRadius:12,padding:"13px 14px"}}>
+                <div style={{fontSize:10,fontWeight:800,color:"#C8861A",marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>💬 Quote Received</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:900,color:"var(--txt)"}}>{(pendingQuote.price||0).toLocaleString()} EGP</div>
+                  <div style={{fontSize:11,color:"var(--sub)"}}>{pendingQuote.timeline}</div>
+                </div>
+                {pendingQuote.notes&&<div style={{fontSize:11,color:"var(--sub)",marginBottom:10,lineHeight:1.5,padding:"8px 10px",background:"var(--sand)",borderRadius:8}}>{pendingQuote.notes}</div>}
+                <div style={{fontSize:9,color:"var(--sub)",marginBottom:10,lineHeight:1.5}}>
+                  Your payment is held securely by Xairod until you confirm the service is complete.
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>acceptQuote(req,pendingQuote)}
+                    style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer"}}>
+                    ✅ Accept Quote
+                  </button>
+                  <button onClick={()=>declineQuote(pendingQuote,req.id)}
+                    style={{flex:1,padding:"11px",borderRadius:10,border:"1.5px solid rgba(192,57,43,0.3)",background:"rgba(192,57,43,0.06)",color:"#C0392B",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* In progress */}
+            {req.status==="in_progress"&&(
+              <div style={{background:"rgba(142,68,173,0.08)",border:"1px solid rgba(142,68,173,0.15)",borderRadius:10,padding:"11px 13px",display:"flex",gap:8,alignItems:"flex-start"}}>
+                <span style={{fontSize:18,flexShrink:0}}>⚡</span>
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#8E44AD",marginBottom:2}}>Service in Progress</div>
+                  <div style={{fontSize:11,color:"var(--sub)",lineHeight:1.5}}>The business is working on your request. When done, they'll send you a confirmation code to enter here.</div>
+                </div>
+              </div>
+            )}
+
+            {/* Needs confirmation code */}
+            {needsCode&&(
+              <div style={{background:"rgba(192,57,43,0.07)",border:"1.5px solid rgba(192,57,43,0.2)",borderRadius:12,padding:"13px 14px"}}>
+                <div style={{fontSize:11,fontWeight:800,color:"#C0392B",marginBottom:4}}>🔑 Enter Confirmation Code</div>
+                <div style={{fontSize:11,color:"var(--sub)",marginBottom:10,lineHeight:1.5}}>The business has completed your service and sent you a 6-digit code. Enter it below to confirm and release their payment.</div>
+                <input value={confCode[req.id]||""} onChange={e=>setConfCode({...confCode,[req.id]:e.target.value.toUpperCase()})}
+                  placeholder="e.g. XR-CONF-123456"
+                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(192,57,43,0.3)",background:"rgba(192,57,43,0.04)",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:700,color:"var(--txt)",outline:"none",marginBottom:8,letterSpacing:1}}/>
+                {confMsg[req.id]&&(
+                  <div style={{fontSize:11,color:confMsg[req.id].includes("✅")?"var(--g)":"#C0392B",marginBottom:8,fontWeight:700}}>{confMsg[req.id]}</div>
+                )}
+                <button onClick={()=>confirmCode(req)} disabled={confLoading[req.id]}
+                  style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:"#C0392B",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:confLoading[req.id]?"default":"pointer",opacity:confLoading[req.id]?0.6:1}}>
+                  {confLoading[req.id]?"Verifying…":"Confirm Service Complete →"}
+                </button>
+              </div>
+            )}
+
+            {/* Completed */}
+            {req.status==="completed"&&(
+              <div style={{background:"rgba(10,107,62,0.08)",border:"1px solid rgba(10,107,62,0.15)",borderRadius:10,padding:"11px 13px",display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{fontSize:20}}>✅</span>
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--g)"}}>Service Completed</div>
+                  <div style={{fontSize:10,color:"var(--sub)"}}>Leave a review to help other users find great businesses</div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
 function HealthScreen({user,lang,listings,setConnectListing}){
   const[mode,setMode]=useState("home");
   const[typeFilter,setTypeFilter]=useState("all");
@@ -2641,6 +2838,7 @@ const NAV=[
   {id:"chat",label:"Chat",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>},
   {id:"study",label:"Study",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>},
   {id:"health",label:"Health",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>},
+  {id:"requests",label:"My Requests",icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>},
   {id:"profile",label:"Profile",icon:<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>},
 ];
 
@@ -3007,7 +3205,8 @@ function MainApp({user,onLogout}){
   const[tab,setTab]=useState("home");
   const[modal,setModal]=useState(null);
   const[detail,setDetail]=useState(null);
-  const[connectListing,setConnectListing]=useState(null); // WhatsApp lead modal
+  const[connectListing,setConnectListing]=useState(null);
+  const[myRequests,setMyRequests]=useState([]); // WhatsApp lead modal
   const[dark,setDark]=useState(false);
   const[lang,setLang]=useState("en");
   const[groups,setGroups]=useState(GROUPS);
@@ -3022,6 +3221,12 @@ function MainApp({user,onLogout}){
     // Public data — listings, groups, Q&A, universities
     supabase.from("listings").select("*").eq("status","active").order("rating",{ascending:false})
       .then(({data})=>{ if(data&&data.length>0) setListings(data.map(l=>({...l,cat:l.category,rc:l.review_count||0,top:l.top||false,african:l.african_owned||false,icon:l.icon||"🏢",price:l.price||"$$",verified:l.verified||false,images:l.images||[]}))); });
+
+    if(user?.id){
+      supabase.from("service_requests").select("*,quotes(*)").eq("user_id",user.id)
+        .order("created_at",{ascending:false})
+        .then(({data})=>{if(data)setMyRequests(data);});
+    }
 
     supabase.from("universities").select("*").order("name",{ascending:true})
       .then(({data,error})=>{
@@ -3634,6 +3839,9 @@ function MainApp({user,onLogout}){
         {tab==="chat"&&<div style={{padding:"0 17px"}}><ChatScreen user={user} lang={lang}/></div>}
         {tab==="study"&&<StudyRoom user={user} lang={lang}/>}
         {tab==="health"&&<HealthScreen user={user} lang={lang} listings={listings} setConnectListing={setConnectListing}/>}
+        {tab==="requests"&&<MyRequestsScreen user={user} lang={lang} requests={myRequests} onRefresh={()=>{
+          supabase.from("service_requests").select("*,quotes(*)").eq("user_id",user.id).order("created_at",{ascending:false}).then(({data})=>{if(data)setMyRequests(data);});
+        }}/>}
 
         {/* ── MODALS ── */}
         {modal==="avoid"&&<SheetModal tips={AVOID} title="⚠️ What to Avoid" onClose={()=>setModal(null)}/>}
