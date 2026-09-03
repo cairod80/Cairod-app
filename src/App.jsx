@@ -148,37 +148,77 @@ function trackEvent(eventName, props={}) {
 }
 
 const CATS=[
-  {id:"all",l:"All",i:"✦",c:"#0A6B3E"},
-  {id:"food",l:"Food",i:"🍲",c:"#0A6B3E"},
-  {id:"agency",l:"Agencies",i:"🏢",c:"#2471A3"},
-  {id:"school",l:"Schools",i:"🎓",c:"#8E44AD"},
-  {id:"housing",l:"Housing",i:"🏠",c:"#E67E22"},
-  {id:"travel",l:"Travel",i:"✈️",c:"#C0392B"},
-  {id:"market",l:"Markets",i:"🛒",c:"#C8861A"},
-  {id:"beauty",l:"Beauty",i:"💇",c:"#16A085"},
-  {id:"health",l:"Health",i:"🏥",c:"#2C3E50"},
-  {id:"finance",l:"Finance",i:"💸",c:"#D35400"},
-  {id:"jobs",l:"Jobs",i:"💼",c:"#1A5276"},
-  {id:"transport",l:"Transport",i:"🚇",c:"#717D7E"},
+  {id:"all",    l:"All",      i:"✦",  c:"#0A6B3E"},
+  {id:"health", l:"Health",   i:"🏥", c:"#C0392B"},
+  {id:"food",   l:"Food",     i:"🍲", c:"#0A6B3E"},
+  {id:"travel", l:"Tourism",  i:"✈️", c:"#2471A3"},
+  {id:"housing",l:"Housing",  i:"🏠", c:"#E67E22"},
+  {id:"school", l:"Schools",  i:"🎓", c:"#8E44AD"},
+];
+
+// Sub-categories for Schools
+const SCHOOL_TYPES=[
+  {id:"agency",    l:"Admission Agency", i:"🏢"},
+  {id:"university",l:"University",       i:"🏛️"},
+  {id:"language",  l:"Language School",  i:"📖"},
+];
+
+// Sub-categories for Food
+const FOOD_TYPES=[
+  {id:"restaurant",l:"Restaurant",  i:"🍽️"},
+  {id:"african",   l:"African Food",i:"🍲"},
+  {id:"catering",  l:"Catering",    i:"🥘"},
+];
+
+// Sub-categories for Housing
+const HOUSING_TYPES=[
+  {id:"apartment",l:"Apartment",         i:"🏠"},
+  {id:"furnished", l:"Furnished Room",   i:"🛏️"},
+  {id:"student",   l:"Student Housing",  i:"🎓"},
+];
+
+// Sub-categories for Tourism
+const TOURISM_TYPES=[
+  {id:"tours",    l:"Cairo Tours",    i:"🏛️"},
+  {id:"transfer", l:"Airport Transfer",i:"🚗"},
+  {id:"packages", l:"Travel Packages",i:"✈️"},
+  {id:"visa",     l:"Visa Services",  i:"📋"},
 ];
 
 const DATA=[
-  {id:"1",name:"Mama Chioma's Kitchen",cat:"food",city:"Nasr City",desc:"Jollof, egusi, pounded yam. Tastes exactly like home.",rating:4.9,rc:84,top:true,african:true,icon:"🍲",phone:"+20 100 123 4567",hours:"11am–10pm",price:"$$",verified:true,lat:30.0626,lng:31.3219,images:[]},
-  {id:"2",name:"Abyssinia Ethiopian Café",cat:"food",city:"Zamalek",desc:"Injera, tibs, kitfo. Coffee ceremony Fridays.",rating:4.8,rc:61,top:false,african:true,icon:"☕",phone:"+20 102 345 6789",hours:"9am–10pm",price:"$$",verified:true,lat:30.0626,lng:31.2197,images:[]},
-  {id:"3",name:"Universal Prime",cat:"agency",city:"Cairo / Global",desc:"Trusted admission agency. Fully funded, partial & self-funded scholarships to Egypt, Turkey & worldwide.",rating:4.9,rc:143,top:true,african:true,icon:"🏢",phone:"+90 212 000 0001",hours:"Mon–Fri 9am–6pm",price:"Free consult",verified:true,lat:30.0903,lng:31.3414,images:[]},
-  {id:"4",name:"EduBridge Africa",cat:"agency",city:"Cairo",desc:"University placement in Egypt and UAE. Visa assistance and airport pickup included.",rating:4.7,rc:58,top:false,african:true,icon:"🎯",phone:"+20 100 999 8888",hours:"Mon–Sat 9am–5pm",price:"Commission",verified:true,lat:30.0444,lng:31.2357,images:[]},
-  {id:"5",name:"Al-Azhar University",cat:"school",city:"Cairo",desc:"World-renowned university. Scholarships available for African students. Apply early.",rating:4.8,rc:320,top:true,african:false,icon:"🕌",phone:"+20 2 261 24444",hours:"Mon–Thu 8am–3pm",price:"Scholarship/Fees",verified:true,lat:30.0459,lng:31.2627,images:[]},
-  {id:"6",name:"Cairo University",cat:"school",city:"Giza",desc:"Egypt's largest university. Medicine, Engineering, Commerce. African students welcome.",rating:4.6,rc:180,top:false,african:false,icon:"🏛️",phone:"+20 2 356 79750",hours:"Mon–Thu 8am–3pm",price:"Fees vary",verified:true,lat:30.0269,lng:31.2089,images:[]},
-  {id:"7",name:"Nasr City Student Rooms",cat:"housing",city:"Nasr City",desc:"Affordable furnished rooms for African students. Bills included. Mixed nationality building.",rating:4.5,rc:42,top:false,african:true,icon:"🛏️",phone:"+20 111 444 3333",hours:"Always open",price:"$$",verified:true,lat:30.0594,lng:31.3287,images:[]},
-  {id:"8",name:"Maadi Expat Apartments",cat:"housing",city:"Maadi",desc:"Modern furnished flats. English-speaking landlord. Monthly or yearly.",rating:4.7,rc:29,top:true,african:false,icon:"🏠",phone:"+20 100 555 2222",hours:"Always open",price:"$$$",verified:true,lat:29.9602,lng:31.2569,images:[]},
-  {id:"9",name:"Africa–Cairo Flights Hub",cat:"travel",city:"Cairo Airport",desc:"Best flight deals Lagos→Cairo, Accra→Cairo, Addis→Cairo. Telegram group for deals.",rating:4.8,rc:211,top:true,african:true,icon:"✈️",phone:"Telegram",hours:"24hrs",price:"$",verified:true,lat:30.1219,lng:31.4056,images:[]},
-  {id:"10",name:"Egypt Visa Express",cat:"travel",city:"Cairo",desc:"Fast visa processing for African students. 48hr turnaround. Student & tourist visas.",rating:4.6,rc:88,top:false,african:false,icon:"📋",phone:"+20 100 111 0000",hours:"Mon–Sat 9am–5pm",price:"$$",verified:false,lat:30.0577,lng:31.2392,images:[]},
-  {id:"11",name:"Ataba African Market",cat:"market",city:"Downtown",desc:"Spices, dried fish, palm oil, crayfish. Go in the morning for best stock.",rating:4.6,rc:97,top:true,african:false,icon:"🛒",phone:"N/A",hours:"8am–7pm",price:"$",verified:true,lat:30.0511,lng:31.2461,images:[]},
-  {id:"12",name:"Tope's African Hair",cat:"beauty",city:"Heliopolis",desc:"Braids, weaves, loc maintenance. African-owned. Book ahead!",rating:4.8,rc:67,top:true,african:true,icon:"💇",phone:"+20 111 456 7890",hours:"10am–7pm",price:"$$",verified:true,lat:30.0808,lng:31.3231,images:[]},
-  {id:"13",name:"Dar Al Fouad Hospital",cat:"health",city:"6th October",desc:"English-speaking doctors. Most trusted hospital among Africans in Cairo.",rating:4.7,rc:88,top:true,african:false,icon:"🏥",phone:"+20 38 540 0000",hours:"24hrs",price:"$$$",verified:true,lat:29.9762,lng:30.9398,images:[]},
-  {id:"14",name:"Wise / Western Union",cat:"finance",city:"All Egypt",desc:"Best money transfer rates. Wise is cheapest, WU is fastest. Avoid airport kiosks.",rating:4.9,rc:445,top:false,african:false,icon:"💸",phone:"App/Online",hours:"24hrs",price:"Low fees",verified:true,lat:30.0444,lng:31.2357,images:[]},
-  {id:"15",name:"Cairo African Jobs Board",cat:"jobs",city:"Cairo",desc:"Part-time & full-time jobs for Africans. English teaching, translation, IT roles.",rating:4.5,rc:33,top:false,african:true,icon:"💼",phone:"Telegram",hours:"Always",price:"Free",verified:false,lat:30.0444,lng:31.2357,images:[]},
-  {id:"16",name:"Careem / Uber Egypt",cat:"transport",city:"All Egypt",desc:"Always use apps. Never negotiate with random taxis — you will be overcharged.",rating:4.8,rc:300,top:true,african:false,icon:"🚗",phone:"App",hours:"24hrs",price:"$$",verified:true,lat:30.0444,lng:31.2357,images:[]},
+  // ── HEALTH ──────────────────────────────────────────────────────────────────
+  {id:"h1",name:"Dar Al Fouad Hospital",cat:"health",city:"6th October",desc:"English-speaking doctors. Most trusted hospital among Africans in Cairo. Full emergency, labs and specialist care.",rating:4.7,rc:88,top:true,african:false,icon:"🏥",phone:"+20 38 540 0000",hours:"24hrs",price:"$$$",verified:true,lat:29.9762,lng:30.9398,images:[]},
+  {id:"h2",name:"Cairo International Clinic",cat:"health",city:"Nasr City",desc:"General practice, blood tests and specialist referrals. English-speaking staff. Affordable for students.",rating:4.6,rc:54,top:false,african:false,icon:"🏥",phone:"+20 100 000 0001",hours:"8am–9pm",price:"$$",verified:true,lat:30.0626,lng:31.3219,images:[]},
+  {id:"h3",name:"Alpha Medical Lab",cat:"health",city:"Heliopolis",desc:"Full blood work, malaria tests, vitamin D, CBC. Home collection available. Results same day.",rating:4.9,rc:156,top:true,african:false,icon:"🧪",phone:"+20 111 000 0002",hours:"7am–10pm",price:"$$",verified:true,lat:30.0808,lng:31.3231,images:[]},
+  {id:"h4",name:"Dr. Amira Hassan — GP",cat:"health",city:"Heliopolis",desc:"General practice. Speaks English and Arabic. Trusted by African students in Cairo.",rating:4.5,rc:41,top:false,african:false,icon:"👨‍⚕️",phone:"+20 100 000 0003",hours:"Mon–Sat 10am–6pm",price:"$$",verified:true,lat:30.0808,lng:31.3231,images:[]},
+  {id:"h5",name:"MindSpace Cairo",cat:"health",city:"Maadi",desc:"Mental health counselling in English. Therapists experienced with African expat students. Online sessions available.",rating:4.8,rc:29,top:false,african:false,icon:"🧠",phone:"+20 100 000 0004",hours:"Mon–Fri 9am–7pm",price:"$$",verified:true,lat:29.9602,lng:31.2569,images:[]},
+
+  // ── FOOD ────────────────────────────────────────────────────────────────────
+  {id:"f1",name:"Mama Chioma's Kitchen",cat:"food",subcat:"african",city:"Nasr City",desc:"Jollof, egusi, pounded yam, ofe onugbu. Tastes exactly like home. Run by a Nigerian mum.",rating:4.9,rc:84,top:true,african:true,icon:"🍲",phone:"+20 100 123 4567",hours:"11am–10pm",price:"$$",verified:true,lat:30.0626,lng:31.3219,images:[]},
+  {id:"f2",name:"Abyssinia Ethiopian Café",cat:"food",subcat:"african",city:"Zamalek",desc:"Injera, tibs, kitfo, tej. Coffee ceremony every Friday evening. Welcoming to all Africans.",rating:4.8,rc:61,top:false,african:true,icon:"☕",phone:"+20 102 345 6789",hours:"9am–10pm",price:"$$",verified:true,lat:30.0626,lng:31.2197,images:[]},
+  {id:"f3",name:"Accra Bites",cat:"food",subcat:"african",city:"New Cairo",desc:"Ghanaian food. Waakye, banku, tilapia, kontomire stew. Popular with West African students.",rating:4.7,rc:47,top:false,african:true,icon:"🍽️",phone:"+20 111 333 4444",hours:"12pm–9pm",price:"$",verified:true,lat:30.0269,lng:31.4397,images:[]},
+  {id:"f4",name:"Nile View Restaurant",cat:"food",subcat:"restaurant",city:"Downtown Cairo",desc:"Egyptian and international menu. Beautiful Nile view. Great for group dinners and celebrations.",rating:4.6,rc:102,top:false,african:false,icon:"🌊",phone:"+20 100 555 6666",hours:"12pm–12am",price:"$$$",verified:true,lat:30.0459,lng:31.2243,images:[]},
+  {id:"f5",name:"AfroFest Catering",cat:"food",subcat:"catering",city:"All Cairo",desc:"African food catering for events, parties and graduations. Nigerian, Ghanaian and Ethiopian menus. Min 20 people.",rating:4.8,rc:33,top:true,african:true,icon:"🥘",phone:"+20 100 777 8888",hours:"By appointment",price:"$$",verified:true,lat:30.0444,lng:31.2357,images:[]},
+
+  // ── TOURISM ─────────────────────────────────────────────────────────────────
+  {id:"t1",name:"Africa–Cairo Flights Hub",cat:"travel",subcat:"packages",city:"Cairo Airport",desc:"Best flight deals Lagos→Cairo, Accra→Cairo, Addis→Cairo, Khartoum→Cairo. Telegram group for live deals.",rating:4.8,rc:211,top:true,african:true,icon:"✈️",phone:"Telegram",hours:"24hrs",price:"$",verified:true,lat:30.1219,lng:31.4056,images:[]},
+  {id:"t2",name:"Egypt Visa Express",cat:"travel",subcat:"visa",city:"Cairo",desc:"Fast visa processing for African students and professionals. 48hr turnaround. Student, tourist and residence visas.",rating:4.6,rc:88,top:false,african:false,icon:"📋",phone:"+20 100 111 0000",hours:"Mon–Sat 9am–5pm",price:"$$",verified:true,lat:30.0577,lng:31.2392,images:[]},
+  {id:"t3",name:"Cairo Discovery Tours",cat:"travel",subcat:"tours",city:"Cairo",desc:"Pyramids, Sphinx, Egyptian Museum, Old Cairo, Khan el-Khalili. English and French guides. Group & private tours.",rating:4.9,rc:178,top:true,african:false,icon:"🏛️",phone:"+20 100 222 3333",hours:"Daily 7am–6pm",price:"$$",verified:true,lat:29.9773,lng:31.1325,images:[]},
+  {id:"t4",name:"QuickRide Airport Transfer",cat:"travel",subcat:"transfer",city:"Cairo Airport",desc:"Fixed price airport pickups. No hidden charges. Clean cars, English-speaking drivers. Available 24/7.",rating:4.7,rc:95,top:false,african:false,icon:"🚗",phone:"+20 100 444 5555",hours:"24hrs",price:"$$",verified:true,lat:30.1219,lng:31.4056,images:[]},
+
+  // ── HOUSING ─────────────────────────────────────────────────────────────────
+  {id:"ho1",name:"Nasr City Student Rooms",cat:"housing",subcat:"student",city:"Nasr City",desc:"Affordable furnished rooms for African students. Bills included. Mixed nationality building. Close to Al-Azhar.",rating:4.5,rc:42,top:false,african:true,icon:"🛏️",phone:"+20 111 444 3333",hours:"Always open",price:"$$",verified:true,lat:30.0594,lng:31.3287,images:[]},
+  {id:"ho2",name:"Maadi Expat Apartments",cat:"housing",subcat:"apartment",city:"Maadi",desc:"Modern furnished flats. English-speaking landlord. Monthly or yearly lease. Quiet neighbourhood, close to embassies.",rating:4.7,rc:29,top:true,african:false,icon:"🏠",phone:"+20 100 555 2222",hours:"Always open",price:"$$$",verified:true,lat:29.9602,lng:31.2569,images:[]},
+  {id:"ho3",name:"Heliopolis Furnished Flats",cat:"housing",subcat:"furnished",city:"Heliopolis",desc:"Furnished 1 and 2 bedroom apartments. Near Ain Shams University. Short and long stay options.",rating:4.6,rc:38,top:false,african:false,icon:"🏠",phone:"+20 111 666 7777",hours:"Always open",price:"$$",verified:true,lat:30.0808,lng:31.3231,images:[]},
+  {id:"ho4",name:"AfroCasa Housing",cat:"housing",subcat:"student",city:"New Cairo",desc:"Shared apartments designed for African students. African-owned. Close to MSA and nearby universities. Community feel.",rating:4.8,rc:51,top:true,african:true,icon:"🏠",phone:"+20 100 888 9999",hours:"Always open",price:"$",verified:true,lat:30.0269,lng:31.4397,images:[]},
+
+  // ── SCHOOLS ─────────────────────────────────────────────────────────────────
+  {id:"s1",name:"Universal Prime Agency",cat:"school",subcat:"agency",city:"Cairo / Global",desc:"Trusted admission agency. Fully funded, partial and self-funded scholarships to Egypt, Turkey and worldwide. Specialists in Al-Azhar, Cairo University and international admissions.",rating:4.9,rc:143,top:true,african:true,icon:"🏢",phone:"+90 212 000 0001",hours:"Mon–Fri 9am–6pm",price:"Free consult",verified:true,lat:30.0903,lng:31.3414,images:[]},
+  {id:"s2",name:"Al-Azhar University",cat:"school",subcat:"university",city:"Cairo",desc:"World-renowned Islamic university. Scholarships available for African students from Muslim-majority countries. Apply through official channels.",rating:4.8,rc:320,top:true,african:false,icon:"🕌",phone:"+20 2 261 24444",hours:"Mon–Thu 8am–3pm",price:"Scholarship/Fees",verified:true,lat:30.0459,lng:31.2627,images:[]},
+  {id:"s3",name:"Cairo University",cat:"school",subcat:"university",city:"Giza",desc:"Egypt's largest public university. Medicine, Engineering, Commerce, Law. African students welcome. English-taught programmes available.",rating:4.6,rc:180,top:false,african:false,icon:"🏛️",phone:"+20 2 356 79750",hours:"Mon–Thu 8am–3pm",price:"Fees vary",verified:true,lat:30.0269,lng:31.2089,images:[]},
+  {id:"s4",name:"Sheikh Zayed Arabic Centre",cat:"school",subcat:"language",city:"6th October City",desc:"Official Arabic language institute. Beginner to advanced Modern Standard Arabic and Egyptian dialect. Flexible schedules for students. Recognised certificates.",rating:4.7,rc:89,top:true,african:false,icon:"📖",phone:"+20 38 000 0001",hours:"Sun–Thu 8am–8pm",price:"$$",verified:true,lat:30.0172,lng:30.9397,images:[]},
+  {id:"s5",name:"ArabLink Language School",cat:"school",subcat:"language",city:"Nasr City",desc:"Intensive Arabic courses for foreign students. Fusha and Egyptian colloquial. Small classes, certified teachers. Popular with African university students.",rating:4.8,rc:67,top:false,african:false,icon:"📚",phone:"+20 100 000 0005",hours:"Daily 8am–7pm",price:"$$",verified:true,lat:30.0626,lng:31.3219,images:[]},
+  {id:"s6",name:"EduBridge Africa",cat:"school",subcat:"agency",city:"Cairo",desc:"University placement in Egypt and UAE. Visa assistance, airport pickup and student orientation included. Specialists in non-Arabic speaking programmes.",rating:4.7,rc:58,top:false,african:true,icon:"🎯",phone:"+20 100 999 8888",hours:"Mon–Sat 9am–5pm",price:"Commission",verified:true,lat:30.0444,lng:31.2357,images:[]},
 ];
 
 const PLANS=[
@@ -205,7 +245,7 @@ const AVOID=[
   {icon:"🏢",type:"warn",title:"Fake Agencies",text:"Always verify agency registration. Never pay 100% fees upfront. Get signed contracts and check Xairod reviews first."},
   {icon:"🚕",type:"warn",title:"Unlicensed Taxis",text:"Always use Uber or Careem. Never negotiate with random taxis — massively overcharged as a foreigner."},
   {icon:"🏪",type:"warn",title:"Tourist Trap Shops",text:"Near Pyramids and Khan El-Khalili prices are 5x for foreigners. Shop in local neighbourhoods."},
-  {icon:"🌙",type:"warn",title:"Ataba at Night",text:"Avoid Ataba market area after 9pm alone. Go in groups or daylight only."},
+  {icon:"🏘️",type:"tip",title:"Nasr City vs Maadi",text:"Nasr City is cheaper and closer to Al-Azhar. Maadi is quieter and more international. Choose based on your university."},
 ];
 
 const ARRIVE=[
@@ -1636,18 +1676,14 @@ function ConnectModal({listing, user, lang, onClose}){
   const[leadRef,setLeadRef]=useState("");
 
   const CAT_QUESTIONS={
-    agency:"Which university or course are you applying for?",
-    food:"How many people and any dietary preferences?",
-    health:"What type of medical assistance do you need?",
-    housing:"How many rooms and for how long?",
-    travel:"Where are you travelling to and from?",
-    school:"Which course or programme are you interested in?",
-    beauty:"Which service are you looking for?",
-    finance:"What financial service do you need help with?",
-    jobs:"What type of job are you looking for?",
-    transport:"What route or transport do you need?",
-    markets:"What are you looking to buy?",
-    worship:"Which service or programme do you need?",
+    health:"What type of health support do you need? Any specific symptoms or services?",
+    food:"What are you looking for — dine-in, takeaway or catering? Any dietary preferences?",
+    travel:"What type of help do you need — flights, visa, airport transfer, or a tour?",
+    housing:"What type of accommodation — furnished room, apartment, or student housing? How long?",
+    school:"Are you looking for university admission, a language school or Arabic classes?",
+    agency:"Which university are you applying to and what level — undergraduate or postgraduate?",
+    language:"Which language and at what level — beginner, intermediate or advanced?",
+    university:"Which university and which faculty or course are you interested in?",
   };
 
   const placeholder=CAT_QUESTIONS[listing?.cat||listing?.category]||"Describe what you need…";
@@ -3407,28 +3443,34 @@ function MainApp({user,onLogout}){
         {/* ── HOME ── */}
         {tab==="home"&&(
           <div className="page-pad">
+            {/* Hero */}
             <div className="hero">
               <div className="pill">🌍 For Africans in Egypt</div>
               <h1>Your <em>Home</em><br/>Away From<br/><strong>Home.</strong></h1>
-              <p className="hero-sub">Find food, agencies, housing, schools, travel and community — all in one place.</p>
+              <p className="hero-sub">Health, Food, Tourism, Housing and Schools — all verified, all in one place.</p>
               <div className="hero-btns">
                 <button className="btn-g" onClick={()=>setTab("explore")}>Explore →</button>
                 <button className="btn-o" onClick={()=>setModal("arrive")}>Student Guide</button>
               </div>
             </div>
+
+            {/* Stats */}
             <div className="stats-row">
-              <div className="stat"><div className="stat-n">{DATA.length}+</div><div className="stat-l">Listings</div></div>
-              <div className="stat"><div className="stat-n">{DATA.filter(d=>d.verified).length}+</div><div className="stat-l">Verified</div></div>
-              <div className="stat"><div className="stat-n">{CATS.length-1}</div><div className="stat-l">Categories</div></div>
+              <div className="stat"><div className="stat-n">{listings.length||DATA.length}+</div><div className="stat-l">Listings</div></div>
+              <div className="stat"><div className="stat-n">{(listings.length||DATA.length)>0?(listings||DATA).filter(d=>d.verified).length:0}+</div><div className="stat-l">Verified</div></div>
+              <div className="stat"><div className="stat-n">5</div><div className="stat-l">Categories</div></div>
             </div>
+
+            {/* Search */}
             <div className="search-wrap">
               <div className="search-box">
                 <span style={{fontSize:14}}>🔍</span>
-                <input placeholder="Search agencies, schools, food…" onClick={()=>setTab("explore")} readOnly/>
+                <input placeholder="Search health, food, housing, schools…" onClick={()=>setTab("explore")} readOnly/>
                 <button className="search-go" onClick={()=>setTab("explore")}>Go</button>
               </div>
             </div>
 
+            {/* Onboarding checklist */}
             {!checklistDismissed&&(
               <OnboardingChecklist
                 onDismiss={dismissChecklist}
@@ -3437,61 +3479,93 @@ function MainApp({user,onLogout}){
                   {label:"Save your first listing",complete:saved.size>0,onClick:()=>setTab("explore")},
                   {label:"Post your first question",complete:qDone,onClick:()=>setTab("community")},
                   {label:"Join our Telegram community",complete:telegramClicked,onClick:()=>{markTelegramJoined();window.open(TELEGRAM_URL,"_blank");}},
-                  {label:"Leave your first review",complete:firstReviewDone,onClick:()=>setTab("explore")},
                 ]}
               />
             )}
 
-            {/* Agency Spotlight */}
+            {/* 5 Main Categories */}
             <div className="section">
-              <div className="sec-head">
-                <div className="sec-title">🏢 Agency Spotlight</div>
-                <span className="sec-link" onClick={()=>{setTab("explore");setCat("agency");}}>See all</span>
+              <div className="sec-head"><div className="sec-title">What do you need?</div></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                {[
+                  {id:"health", i:"🏥",l:"Health",   sub:"Clinics · Doctors · Labs",    c:"#C0392B"},
+                  {id:"food",   i:"🍲",l:"Food",     sub:"African · Restaurants · Catering",c:"#0A6B3E"},
+                  {id:"travel", i:"✈️",l:"Tourism",  sub:"Tours · Flights · Transfers",  c:"#2471A3"},
+                  {id:"housing",i:"🏠",l:"Housing",  sub:"Rooms · Flats · Student",      c:"#E67E22"},
+                ].map(cat=>(
+                  <button key={cat.id} onClick={()=>{setTab("explore");setCat(cat.id);}}
+                    style={{padding:"14px 12px",borderRadius:14,border:"1.5px solid",borderColor:cat.c+"30",background:cat.c+"0D",textAlign:"left",cursor:"pointer",transition:"all 0.15s"}}>
+                    <div style={{fontSize:26,marginBottom:5}}>{cat.i}</div>
+                    <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:14,color:"var(--txt)",marginBottom:2}}>{cat.l}</div>
+                    <div style={{fontSize:9,color:"var(--sub)",lineHeight:1.4}}>{cat.sub}</div>
+                  </button>
+                ))}
               </div>
-              <div style={{background:"rgba(36,113,163,0.08)",border:"1px solid rgba(36,113,163,0.2)",borderRadius:14,padding:14,cursor:"pointer"}} onClick={()=>onOpen(DATA.find(l=>l.id==="3"))}>
-                <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
-                  <div style={{width:46,height:46,borderRadius:11,background:"rgba(36,113,163,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🏢</div>
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:700,fontSize:13,marginBottom:2,display:"flex",alignItems:"center",gap:5}}>
-                      Universal Prime
-                      <span style={{fontSize:9,background:"var(--gold)",color:"white",padding:"2px 5px",borderRadius:4,fontWeight:700}}>★ TOP</span>
-                      <span style={{fontSize:10,color:"var(--blue)"}}>✓</span>
-                    </div>
-                    <div style={{fontSize:11,color:"var(--sub)",marginBottom:8,lineHeight:1.5}}>Admission agency · Egypt, Turkey & worldwide</div>
-                    <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                      {["✓ Fully Funded","✓ Partial","✓ Self-Funded"].map((b,i)=>(
-                        <span key={i} style={{fontSize:9,fontWeight:700,background:["rgba(10,107,62,0.1)","rgba(200,134,26,0.1)","rgba(142,68,173,0.1)"][i],color:["var(--g)","var(--gold)","var(--purple)"][i],padding:"2px 7px",borderRadius:5}}>{b}</span>
-                      ))}
-                    </div>
-                  </div>
+              {/* Schools — full width */}
+              <button onClick={()=>{setTab("explore");setCat("school");}}
+                style={{width:"100%",padding:"14px 16px",borderRadius:14,border:"1.5px solid rgba(142,68,173,0.25)",background:"rgba(142,68,173,0.07)",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+                <div style={{width:46,height:46,borderRadius:12,background:"rgba(142,68,173,0.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>🎓</div>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:15,color:"var(--txt)",marginBottom:3}}>Schools & Admission</div>
+                  <div style={{fontSize:10,color:"var(--sub)",lineHeight:1.5}}>Admission Agencies · Universities · Arabic Language Schools (Sheikh Zayed & more)</div>
                 </div>
-              </div>
+                <span style={{color:"var(--sub)",fontSize:18,flexShrink:0}}>→</span>
+              </button>
             </div>
 
-            {/* Categories */}
+            {/* Featured listings */}
             <div className="section">
-              <div className="sec-head"><div className="sec-title">Categories</div></div>
-              <div className="cat-chips">
-                {CATS.filter(c=>c.id!=="all").map(c=>(
-                  <div key={c.id} className="cat-chip" onClick={()=>{setTab("explore");setCat(c.id);}} style={{borderColor:`${c.c}30`}}>
-                    <span className="cat-chip-icon">{c.i}</span>
-                    <span className="cat-chip-label" style={{color:c.c}}>{c.l}</span>
-                  </div>
+              <div className="sec-head">
+                <div className="sec-title">⭐ Featured</div>
+                <span className="sec-link" onClick={()=>setTab("explore")}>See all</span>
+              </div>
+              <div className="listing-grid">
+                {(listings.length>0?listings:DATA).filter(d=>d.top||d.verified).slice(0,4).map(item=>(
+                  <Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>
                 ))}
               </div>
             </div>
 
-            {/* Featured */}
+            {/* Health section */}
             <div className="section">
               <div className="sec-head">
-                <div className="sec-title">Featured</div>
-                <span className="sec-link" onClick={()=>setTab("explore")}>See all</span>
+                <div className="sec-title">🏥 Health</div>
+                <span className="sec-link" onClick={()=>{setTab("health");}}>Health Assistant →</span>
               </div>
               <div className="listing-grid">
-                {featured.map(item=><Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>)}
+                {(listings.length>0?listings:DATA).filter(d=>d.cat==="health").slice(0,2).map(item=>(
+                  <Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>
+                ))}
               </div>
             </div>
 
+            {/* African Food */}
+            <div className="section">
+              <div className="sec-head">
+                <div className="sec-title">🍲 African Food</div>
+                <span className="sec-link" onClick={()=>{setTab("explore");setCat("food");}}>See all</span>
+              </div>
+              <div className="listing-grid">
+                {(listings.length>0?listings:DATA).filter(d=>d.cat==="food"&&d.african).slice(0,2).map(item=>(
+                  <Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>
+                ))}
+              </div>
+            </div>
+
+            {/* Schools & Admission */}
+            <div className="section">
+              <div className="sec-head">
+                <div className="sec-title">🎓 Schools & Admission</div>
+                <span className="sec-link" onClick={()=>{setTab("explore");setCat("school");}}>See all</span>
+              </div>
+              <div className="listing-grid">
+                {(listings.length>0?listings:DATA).filter(d=>d.cat==="school").slice(0,2).map(item=>(
+                  <Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>
+                ))}
+              </div>
+            </div>
+
+            {/* Avoid scams banner */}
             <div className="section">
               <div style={{background:"var(--sand)",borderRadius:12,padding:13,display:"flex",gap:10,alignItems:"center",cursor:"pointer",border:"1.5px dashed var(--bdr)"}} onClick={()=>setModal("avoid")}>
                 <span style={{fontSize:20}}>⚠️</span>
