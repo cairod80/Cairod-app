@@ -4004,31 +4004,98 @@ export default function App(){
       return;
     }
 
-    // Restore session on reload without blocking the UI
+    // ── INACTIVITY CONFIG ─────────────────────────────────────────────────────
+    const INACTIVITY_DAYS = 25;
+    const INACTIVITY_MS   = INACTIVITY_DAYS * 24 * 60 * 60 * 1000;
+    const LAST_ACTIVE_KEY = "xairod_last_active";
+
+    const recordActivity = () => {
+      localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+    };
+
+    const checkInactivity = () => {
+      const last = parseInt(localStorage.getItem(LAST_ACTIVE_KEY) || "0");
+      if (last > 0 && Date.now() - last > INACTIVITY_MS) {
+        // User inactive for 25+ days — sign out
+        supabase.auth.signOut();
+        localStorage.removeItem(LAST_ACTIVE_KEY);
+        return true; // was inactive
+      }
+      return false;
+    };
+
+    // Track user activity
+    const events = ["click","keydown","touchstart","scroll"];
+    events.forEach(e => window.addEventListener(e, recordActivity, {passive:true}));
+
+    // ── RESTORE SESSION ON RELOAD ─────────────────────────────────────────────
     supabase.auth.getSession().then(async({data:{session}})=>{
       if(session?.user){
+        // Check inactivity before restoring
+        if(checkInactivity()){
+          setScreen("onboard");
+          return;
+        }
+        recordActivity(); // reset timer on successful login
         try{
           const{data:p}=await supabase.from("profiles").select("*").eq("id",session.user.id).single();
-          setUser({id:session.user.id,email:session.user.email,name:p?.name||session.user.email.split("@")[0],city:p?.city||"Cairo, Egypt",role:p?.role||"Student",bio:p?.bio||"",phone:p?.phone||"",avatarUrl:p?.avatar_url||null,isAdmin:p?.is_admin===true,plan:p?.plan||"basic"});
+          setUser({
+            id:session.user.id,
+            email:session.user.email,
+            name:p?.name||session.user.email.split("@")[0],
+            city:p?.city||"Cairo, Egypt",
+            role:p?.role||"Student",
+            bio:p?.bio||"",
+            phone:p?.phone||"",
+            avatarUrl:p?.avatar_url||null,
+            isAdmin:p?.is_admin===true,
+            plan:p?.plan||"basic"
+          });
           setScreen("app");
-        }catch(e){/* profile fetch failed — let user log in manually */}
+        }catch(e){
+          // Profile fetch failed — session exists but profile not loaded
+          // Still log them in with basic info rather than kicking them out
+          setUser({
+            id:session.user.id,
+            email:session.user.email,
+            name:session.user.email.split("@")[0],
+            city:"Cairo, Egypt",role:"Student",bio:"",phone:"",
+            avatarUrl:null,isAdmin:false,plan:"basic"
+          });
+          setScreen("app");
+        }
       }
-    }).catch(()=>{/* Supabase unreachable — app still runs in demo mode */});
+    }).catch(()=>{/* Supabase unreachable — stay on onboard */});
+
     const{data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
       if(event==="SIGNED_OUT"||!session){setUser(null);setScreen("onboard");}
       if(event==="PASSWORD_RECOVERY"){setScreen("reset_password");}
+      if(event==="SIGNED_IN"&&session){recordActivity();}
     });
-    return()=>subscription.unsubscribe();
+
+    return()=>{
+      subscription.unsubscribe();
+      events.forEach(e=>window.removeEventListener(e,recordActivity));
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
   useEffect(()=>{
-    const t=setTimeout(()=>{if(screen==="splash")setScreen("onboard");},2600);
+    // Only redirect to onboard after splash if session check is done
+    // and user is still on splash (not redirected to app)
+    const t=setTimeout(()=>{
+      setScreen(prev=>prev==="splash"?"onboard":prev);
+    },2600);
     return()=>clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  const login=u=>{trackEvent("login_success",{userId:u?.id});setUser(u);setScreen("app");};
+  const login=u=>{
+    trackEvent("login_success",{userId:u?.id});
+    localStorage.setItem("xairod_last_active", Date.now().toString());
+    setUser(u);
+    setScreen("app");
+  };
   const logout=async()=>{await supabase.auth.signOut();setUser(null);setScreen("onboard");};
 
   return(
