@@ -7,6 +7,49 @@ const supabase = createClient(
   process.env.REACT_APP_SUPABASE_ANON_KEY
 );
 
+// ── PAYSTACK CONFIG ──────────────────────────────────────────────────────────
+// ⚠️  TEMPORARY: Using partner Paystack account in NGN
+// Replace PAYSTACK_PUBLIC_KEY with new key after regenerating on dashboard
+// Replace PAYSTACK_CURRENCY with "EGP" once Xairod gets its own Paystack account
+const PAYSTACK_PUBLIC_KEY = process.env.REACT_APP_PAYSTACK_KEY || "pk_live_ee12723c71f0bf534bed567b1423cf2b4c479c3c";
+const PAYSTACK_CURRENCY   = "NGN"; // Change to "EGP" when Xairod Paystack is ready
+
+// ── PAYSTACK PAYMENT HOOK ─────────────────────────────────────────────────────
+function usePaystack(){
+  const[ready,setReady]=useState(!!window.PaystackPop);
+  useEffect(()=>{
+    if(window.PaystackPop){setReady(true);return;}
+    const script=document.createElement('script');
+    script.src='https://js.paystack.co/v1/inline.js';
+    script.async=true;
+    script.onload=()=>setReady(true);
+    script.onerror=()=>console.error('Paystack failed to load');
+    document.head.appendChild(script);
+  },[]);
+  return ready;
+}
+
+function openPaystackPayment({email,amount,currency,ref,meta,onSuccess,onClose}){
+  if(!window.PaystackPop){alert('Payment system not loaded. Please check your connection and try again.');return;}
+  const handler=window.PaystackPop.setup({
+    key:PAYSTACK_PUBLIC_KEY,
+    email:email||'user@xairod.com',
+    amount:Math.round(amount*100), // Paystack uses kobo/cents
+    currency:currency||PAYSTACK_CURRENCY,
+    ref:ref||'XR-PAY-'+Date.now(),
+    metadata:{...meta,platform:'Xairod',custom_fields:[
+      {display_name:"Platform",variable_name:"platform",value:"Xairod"},
+      {display_name:"Reference",variable_name:"ref",value:ref||""},
+    ]},
+    callback:(response)=>{
+      if(response.status==='success') onSuccess(response);
+    },
+    onClose:()=>{if(onClose)onClose();},
+  });
+  handler.openIframe();
+}
+
+
 // ════════════════════════════════════════════════════════════════════════════
 // XAIROD v6.0 — App.jsx
 // Supersedes v5.0. Major update per PRD-CAIROD-001 v2.0.
@@ -511,17 +554,64 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
     completed:"Completed ✓",declined:"Declined",cancelled:"Cancelled"
   };
 
+  const[paymentModal,setPaymentModal]=useState(null);
+  const[paying,setPaying]=useState(false);
+  const[payError,setPayError]=useState("");
+  const paystackReady=usePaystack();
+
   const acceptQuote=async(req,quote)=>{
-    await supabase.from("quotes").update({status:"accepted"}).eq("id",quote.id);
-    await supabase.from("service_requests").update({status:"in_progress"}).eq("id",req.id);
-    await supabase.from("bookings").insert({
-      request_id:req.id,quote_id:quote.id,user_id:user.id,
-      business_id:quote.business_id,service_description:req.what_i_need,
-      gross_amount:quote.price,commission_rate:quote.commission_rate||12,
-      commission_amount:quote.commission_amount,payout_amount:quote.payout_amount,
-      status:"in_progress",
+    // Show payment confirmation modal before charging
+    setPaymentModal({req,quote});
+    setPayError("");
+  };
+
+  const processPayment=async(req,quote)=>{
+    if(!paystackReady){setPayError("Payment system loading — please wait a moment.");return;}
+    setPaying(true);setPayError("");
+    const payRef="XR-PAY-"+req.ref+"-"+Date.now();
+    openPaystackPayment({
+      email:user.email||"user@xairod.com",
+      amount:quote.price,
+      currency:PAYSTACK_CURRENCY,
+      ref:payRef,
+      meta:{
+        user_id:user.id,
+        user_name:user.name,
+        request_ref:req.ref,
+        listing:req.listing_name,
+        service:req.what_i_need,
+      },
+      onSuccess:async(response)=>{
+        // Payment confirmed by Paystack — update records
+        await supabase.from("quotes").update({status:"accepted"}).eq("id",quote.id);
+        await supabase.from("service_requests").update({status:"in_progress"}).eq("id",req.id);
+        await supabase.from("bookings").insert({
+          request_id:req.id,quote_id:quote.id,user_id:user.id,
+          business_id:quote.business_id,service_description:req.what_i_need,
+          gross_amount:quote.price,commission_rate:quote.commission_rate||12,
+          commission_amount:quote.commission_amount,payout_amount:quote.payout_amount,
+          status:"in_progress",
+          payment_ref:payRef,
+          payment_status:"paid",
+          paid_at:new Date().toISOString(),
+          paystack_ref:response.reference,
+          currency:PAYSTACK_CURRENCY,
+        });
+        // Notify business
+        await supabase.from("notifications").insert({
+          user_id:quote.business_id,icon:"💰",
+          message:`Payment received for request ${req.ref}. Deliver the service to release your payout.`,
+          type:"payment_received",
+          metadata:{request_ref:req.ref,amount:quote.price}
+        }).catch(()=>{});
+        setPaying(false);setPaymentModal(null);
+        onRefresh();
+      },
+      onClose:()=>{
+        setPaying(false);
+        setPayError("Payment was cancelled. Tap Pay to try again.");
+      }
     });
-    onRefresh();
   };
 
   const declineQuote=async(quote,reqId)=>{
@@ -549,6 +639,53 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
 
   return(
     <div style={{padding:"0 17px 80px"}}>
+
+      {/* ── PAYMENT MODAL ── */}
+      {paymentModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0 0 0 0"}}>
+          <div style={{background:"var(--card)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:480,border:"1.5px solid var(--bdr)",borderBottom:"none"}}>
+            <div style={{width:40,height:4,background:"var(--bdr)",borderRadius:2,margin:"0 auto 20px"}}/>
+            <div style={{fontFamily:"'Fraunces',serif",fontWeight:900,fontSize:20,marginBottom:4}}>Confirm Payment</div>
+            <div style={{fontSize:12,color:"var(--sub)",marginBottom:20,lineHeight:1.6}}>Your payment is held securely by Xairod. It is only released to the business after you confirm the service is complete.</div>
+
+            {/* Breakdown */}
+            <div style={{background:"var(--sand)",borderRadius:12,padding:"14px 16px",marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--sub)",textTransform:"uppercase",letterSpacing:0.8,marginBottom:10}}>Payment Breakdown</div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                <div style={{fontSize:13,color:"var(--txt)"}}>{paymentModal.req.listing_name||"Service"}</div>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--txt)"}}>{(paymentModal.quote.price||0).toLocaleString()} {PAYSTACK_CURRENCY}</div>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                <div style={{fontSize:11,color:"var(--sub)"}}>Xairod platform fee</div>
+                <div style={{fontSize:11,color:"var(--sub)"}}>Included</div>
+              </div>
+              <div style={{height:1,background:"var(--bdr)",margin:"10px 0"}}/>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <div style={{fontSize:14,fontWeight:800,color:"var(--txt)"}}>Total to pay</div>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:900,color:"var(--g)"}}>{(paymentModal.quote.price||0).toLocaleString()} {PAYSTACK_CURRENCY}</div>
+              </div>
+            </div>
+
+            <div style={{background:"rgba(10,107,62,0.06)",border:"1px solid rgba(10,107,62,0.15)",borderRadius:10,padding:"10px 12px",marginBottom:16,display:"flex",gap:8,alignItems:"flex-start"}}>
+              <span style={{fontSize:16,flexShrink:0}}>🔒</span>
+              <div style={{fontSize:11,color:"var(--sub)",lineHeight:1.6}}>Powered by Paystack. Your card details are never stored by Xairod. Payment is held in escrow until you confirm the service.</div>
+            </div>
+
+            {payError&&<div style={{fontSize:11,color:"#C0392B",fontWeight:700,marginBottom:12,padding:"8px 12px",background:"rgba(192,57,43,0.08)",borderRadius:8}}>{payError}</div>}
+
+            <button onClick={()=>processPayment(paymentModal.req,paymentModal.quote)}
+              disabled={paying}
+              style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:paying?"var(--sub)":"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:15,cursor:paying?"default":"pointer",marginBottom:10}}>
+              {paying?"Processing…":"Pay "+((paymentModal.quote.price||0).toLocaleString())+" "+PAYSTACK_CURRENCY+" →"}
+            </button>
+            <button onClick={()=>{setPaymentModal(null);setPayError("");setPaying(false);}}
+              style={{width:"100%",padding:"12px",borderRadius:12,border:"1.5px solid var(--bdr)",background:"transparent",color:"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{paddingTop:16,marginBottom:16}}>
         <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:20,marginBottom:4}}>My Requests</div>
         <div style={{fontSize:12,color:"var(--sub)",lineHeight:1.5}}>All your connections with businesses. Accept quotes, track progress, and confirm completed services.</div>
@@ -3400,8 +3537,38 @@ function MainApp({user,onLogout}){
     return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
   };
 
-  const filtered=listings
-    .filter(l=>(cat==="all"||l.cat===cat)&&(srch===""||l.name.toLowerCase().includes(srch.toLowerCase())||l.desc.toLowerCase().includes(srch.toLowerCase())))
+  // Merge universities from the universities table into school listings
+  const universityListings = cat==="school"||cat==="all" ? universities
+    .filter(u=>u.active!==false) // only active/visible universities — matches admin toggle
+    .map(u=>({
+      id:"uni-"+u.id,
+      name:u.name,
+      cat:"school",
+      subcat:"university",
+      city:u.city||"Cairo",
+      desc:u.description||u.desc||"",
+      rating:u.rating||0,
+      rc:u.review_count||0,
+      top:u.featured||u.top||false,
+      african:false,
+      verified:true,
+      icon:u.emoji||"🏛️",
+      phone:u.phone||"",
+      hours:u.hours||"",
+      price:u.tuition||"",
+      lat:u.lat,lng:u.lng,
+      images:[],
+      _isUniversity:true,
+      scholarships:u.scholarships,
+      faculties:u.faculties,
+      website:u.website,
+      country:u.country,
+    })) : [];
+
+  const allListings = [...(listings.length>0?listings:DATA), ...universityListings];
+
+  const filtered=allListings
+    .filter(l=>(cat==="all"||l.cat===cat)&&(srch===""||l.name.toLowerCase().includes(srch.toLowerCase())||(l.desc||"").toLowerCase().includes(srch.toLowerCase())))
     .sort((a,b)=>{
       if(srt==="distance"&&userGeo&&a.lat&&b.lat){
         return haversine(userGeo.lat,userGeo.lng,a.lat,a.lng)-haversine(userGeo.lat,userGeo.lng,b.lat,b.lng);
@@ -3561,7 +3728,7 @@ function MainApp({user,onLogout}){
                 <span className="sec-link" onClick={()=>{setTab("explore");setCat("school");}}>See all</span>
               </div>
               <div className="listing-grid">
-                {(listings.length>0?listings:DATA).filter(d=>d.cat==="school").slice(0,2).map(item=>(
+                {(listings.length>0?[...listings,...universities.filter(u=>u.visible!==false).map(u=>({id:"uni-"+u.id,name:u.name,cat:"school",subcat:"university",city:u.city||"Cairo",desc:u.description||"",rating:u.rating||0,rc:u.review_count||0,top:u.featured||false,verified:true,icon:"🏛️",images:[]}))]:DATA).filter(d=>d.cat==="school").slice(0,2).map(item=>(
                   <Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>
                 ))}
               </div>
