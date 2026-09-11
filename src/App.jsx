@@ -74,7 +74,6 @@ function openPaystackPayment({email,amount,currency,ref,meta,onSuccess,onClose})
 
 const GF="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=Outfit:wght@300;400;500;600;700&family=Cairo:wght@400;600;700;800&display=swap";
 const TELEGRAM_URL="https://t.me/ckairod";
-const XAIROD_WA_NUMBER="201558971774"; // ⚠️ Replace with real Xairod WhatsApp Business number once WATI is live
 const GOOGLE_MAPS_KEY = typeof process!=="undefined" && process.env ? process.env.REACT_APP_GOOGLE_MAPS_KEY : "";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -937,7 +936,7 @@ function HealthScreen({user,lang,listings,setConnectListing}){
         {/* CTA */}
         <button onClick={e=>{e.stopPropagation();onConnect(item);}}
           style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:rank===0?"var(--g)":"#C0392B",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-          💬 Connect via Xairod →
+          📋 Book / Request →
         </button>
       </div>
     </div>
@@ -1027,7 +1026,7 @@ function HealthScreen({user,lang,listings,setConnectListing}){
             {[
               ["🔒","Your contact info is private","Businesses only see you after you confirm"],
               ["✓","All providers are verified","We check every clinic before listing"],
-              ["💬","WhatsApp-protected connection","Every lead tracked with a reference ID"],
+              ["💬","Fully in-app booking","Secure payment held in escrow until complete"],
               ["🌍","English & Arabic support","We match you to providers that speak your language"],
             ].map(([ico,title,sub])=>(
               <div key={title} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
@@ -1801,180 +1800,292 @@ function ChatScreen({user,lang}){
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CONNECT VIA XAIROD — WhatsApp Mediation Lead System
+// ════════════════════════════════════════════════════════════════════════════
+// BOOKING MODAL — Fully in-app, no WhatsApp dependency
 // ════════════════════════════════════════════════════════════════════════════
 function ConnectModal({listing, user, lang, onClose}){
-  const[step,setStep]=useState("form"); // form | sent
-  const[what,setWhat]=useState("");
-  const[when,setWhen]=useState("");
-  const[budget,setBudget]=useState("");
-  const[whatsapp,setWhatsapp]=useState(user?.phone||"");
+  const[step,setStep]=useState("form"); // form | confirm | sent
   const[loading,setLoading]=useState(false);
   const[err,setErr]=useState("");
-  const[leadRef,setLeadRef]=useState("");
+  const[reqRef,setReqRef]=useState("");
 
-  const CAT_QUESTIONS={
-    health:"What type of health support do you need? Any specific symptoms or services?",
-    food:"What are you looking for — dine-in, takeaway or catering? Any dietary preferences?",
-    travel:"What type of help do you need — flights, visa, airport transfer, or a tour?",
-    housing:"What type of accommodation — furnished room, apartment, or student housing? How long?",
-    school:"Are you looking for university admission, a language school or Arabic classes?",
-    agency:"Which university are you applying to and what level — undergraduate or postgraduate?",
-    language:"Which language and at what level — beginner, intermediate or advanced?",
-    university:"Which university and which faculty or course are you interested in?",
+  // Category-specific form fields
+  const cat=listing?.cat||listing?.category||"other";
+  const triageCtx=listing?._triageContext;
+
+  // Form state
+  const[what,setWhat]=useState(triageCtx?`Type: ${triageCtx.type}\nUrgency: ${triageCtx.urgency}\nDetails: ${triageCtx.details||"N/A"}\nHome visit: ${triageCtx.homeVisit?"Yes":"No"}`:"");
+  const[when,setWhen]=useState(triageCtx?.urgency||"");
+  const[budget,setBudget]=useState("");
+  // Category-specific extras
+  const[groupSize,setGroupSize]=useState("");
+  const[moveIn,setMoveIn]=useState("");
+  const[duration,setDuration]=useState("");
+  const[programme,setProgramme]=useState("");
+
+  const CAT_CONFIG={
+    health:{
+      icon:"🏥",color:"#C0392B",label:"Book Health Service",
+      placeholder:"Describe your symptoms or what type of care you need…",
+      whenLabel:"Preferred date / urgency",extras:null
+    },
+    food:{
+      icon:"🍲",color:"#0A6B3E",label:"Place Order",
+      placeholder:"What would you like? Dine-in, takeaway or catering?",
+      whenLabel:"Date & time",extras:"group"
+    },
+    travel:{
+      icon:"✈️",color:"#2471A3",label:"Book Tour / Transfer",
+      placeholder:"What type of tour, transfer or travel service do you need?",
+      whenLabel:"Travel date",extras:"group"
+    },
+    housing:{
+      icon:"🏠",color:"#E67E22",label:"Request Viewing",
+      placeholder:"What type of room or apartment are you looking for?",
+      whenLabel:"Preferred move-in date",extras:"housing"
+    },
+    school:{
+      icon:"🎓",color:"#8E44AD",label:"Send Admission Enquiry",
+      placeholder:"Which programme, level or course are you interested in?",
+      whenLabel:"Intended start date",extras:"school"
+    },
+    agency:{
+      icon:"🏢",color:"#2471A3",label:"Submit Enquiry",
+      placeholder:"Which university are you applying to? What level?",
+      whenLabel:"Target start date",extras:"school"
+    },
+    language:{
+      icon:"📖",color:"#8E44AD",label:"Enquire About Course",
+      placeholder:"Which language and what level — beginner, intermediate or advanced?",
+      whenLabel:"Preferred start",extras:null
+    },
   };
 
-  const placeholder=CAT_QUESTIONS[listing?.cat||listing?.category]||"Describe what you need…";
+  const cfg=CAT_CONFIG[cat]||{
+    icon:"📋",color:"var(--g)",label:"Send Request",
+    placeholder:"Describe what you need…",
+    whenLabel:"When?",extras:null
+  };
 
   const submit=async()=>{
     if(!what.trim()){setErr("Please describe what you need.");return;}
+    if(!user){setErr("Please sign in to send a request.");return;}
     setErr("");setLoading(true);
     try{
-      // Save lead to Supabase — ref is auto-generated by trigger
-      const isHealth=(listing?.cat||listing?.category)==="health"||listing?._triageContext;
-      const triageCtx=listing?._triageContext;
-      const fullDetail=triageCtx?
-        `Type: ${triageCtx.type}\nUrgency: ${triageCtx.urgency}\nDetails: ${triageCtx.details||"N/A"}\nHome visit: ${triageCtx.homeVisit?"Yes":"No"}\nAdditional: ${what.trim()}`:
-        what.trim();
+      // Build full detail string
+      let fullDetail=what.trim();
+      if(groupSize) fullDetail+=`\nGroup size: ${groupSize}`;
+      if(moveIn)    fullDetail+=`\nMove-in date: ${moveIn}`;
+      if(duration)  fullDetail+=`\nDuration: ${duration}`;
+      if(programme) fullDetail+=`\nProgramme/Course: ${programme}`;
 
-      const{data,error}=await supabase.from("leads").insert({
-        user_id:user?.id||null,
+      // Find business account for this listing
+      const{data:bizAccount}=await supabase.from("business_accounts")
+        .select("id").eq("listing_id",listing?.id).single().catch(()=>({data:null}));
+
+      // Create service_request (in-app)
+      const{data:req,error:reqErr}=await supabase.from("service_requests").insert({
+        user_id:user.id,
         listing_id:listing?.id||null,
         listing_name:listing?.name||"",
-        listing_category:isHealth?"health":(listing?.cat||listing?.category||""),
-        user_name:user?.name||"",
-        user_whatsapp:whatsapp.trim()||null,
+        listing_category:cat,
+        assigned_business_id:bizAccount?.id||null,
         what_i_need:fullDetail,
-        when_needed:when.trim()||triageCtx?.urgency||null,
+        when_needed:when.trim()||null,
         budget:budget.trim()||null,
-        status:"new",
+        status:"open",
       }).select("ref").single();
 
-      if(error)throw error;
+      if(reqErr)throw reqErr;
 
-      const ref=data?.ref||"XR-LEAD-??????";
-      setLeadRef(ref);
+      // Also create lead for admin tracking
+      await supabase.from("leads").insert({
+        user_id:user.id,
+        listing_id:listing?.id||null,
+        listing_name:listing?.name||"",
+        listing_category:cat,
+        user_name:user.name||"",
+        what_i_need:fullDetail,
+        when_needed:when.trim()||null,
+        budget:budget.trim()||null,
+        status:"new",
+      }).catch(()=>{});
 
-      // Build pre-filled WhatsApp message to Xairod's number
-      const isHlth=(listing?.cat||listing?.category)==="health"||listing?._triageContext;
-      const refPrefix=isHlth?"🏥 Health Request":"🔍 What I need";
-      const msg=`Hi Xairod! 👋\n\nI need help connecting with *${listing?.name}*.\n\n📋 Reference: *${ref}*\n\n${refPrefix}:\n${fullDetail||what.trim()}${when?"\n\n📅 When: "+when:""}${budget?"\n\n💰 Budget: "+budget:""}\n\nPlease help me connect. Thank you!`;
+      // Notify business in-app
+      if(bizAccount?.id){
+        const{data:bizUser}=await supabase.from("business_accounts")
+          .select("user_id").eq("id",bizAccount.id).single().catch(()=>({data:null}));
+        if(bizUser?.user_id){
+          await supabase.from("notifications").insert({
+            user_id:bizUser.user_id,
+            icon:cfg.icon,
+            message:`New booking request from ${user.name||"a user"} for ${listing?.name}. Reference: ${req.ref}`,
+            type:"new_request",
+            metadata:{request_ref:req.ref,listing_name:listing?.name}
+          }).catch(()=>{});
+        }
+      }
 
-      const waUrl=`https://wa.me/${XAIROD_WA_NUMBER}?text=${encodeURIComponent(msg)}`;
-
-      // Open WhatsApp
-      window.open(waUrl,"_blank");
+      setReqRef(req.ref||"XR-REQ-??????");
       setStep("sent");
     }catch(e){
       setErr("Something went wrong. Please try again.");
+      console.error(e);
     }
     setLoading(false);
   };
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:400,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg)",borderRadius:"20px 20px 0 0",padding:"24px 20px 32px",width:"100%",maxWidth:540,maxHeight:"90dvh",overflowY:"auto"}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:400,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg)",borderRadius:"20px 20px 0 0",padding:"20px 18px 36px",width:"100%",maxWidth:540,maxHeight:"92dvh",overflowY:"auto"}}>
+
+        {/* Drag handle */}
+        <div style={{width:36,height:4,background:"var(--bdr)",borderRadius:2,margin:"0 auto 18px"}}/>
 
         {step==="form"&&(
           <>
             {/* Header */}
-            <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:18}}>
-              <div style={{width:44,height:44,borderRadius:12,background:"var(--sand)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
-                {listing?.icon||"🏢"}
+            <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:16}}>
+              <div style={{width:46,height:46,borderRadius:12,background:cfg.color+"18",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+                {listing?.icon||cfg.icon}
               </div>
               <div style={{flex:1}}>
-                <div style={{fontFamily:"'Fraunces',serif",fontWeight:700,fontSize:16,lineHeight:1.3}}>{listing?.name}</div>
-                <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>
-                  {lang==="ar"?"تواصل عبر Xairod":"Connect via Xairod · Reference tracked"}
+                <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:16,lineHeight:1.3,color:"var(--txt)"}}>{listing?.name}</div>
+                <div style={{fontSize:11,color:"var(--sub)",marginTop:2,fontWeight:600}}>{cfg.label}</div>
+              </div>
+              <button onClick={onClose} style={{background:"none",border:"none",color:"var(--sub)",fontSize:22,cursor:"pointer",padding:4,lineHeight:1}}>×</button>
+            </div>
+
+            {/* Progress steps */}
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:16}}>
+              {["Fill Request","Business Quotes","Pay","Confirm"].map((s,i)=>(
+                <div key={s} style={{display:"flex",alignItems:"center",gap:6,flex:i<3?1:"initial"}}>
+                  <div style={{width:20,height:20,borderRadius:"50%",background:i===0?cfg.color:"var(--bdr)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:i===0?"white":"var(--sub)",flexShrink:0}}>
+                    {i+1}
+                  </div>
+                  <div style={{fontSize:9,color:i===0?"var(--txt)":"var(--sub)",fontWeight:i===0?700:400,whiteSpace:"nowrap"}}>{s}</div>
+                  {i<3&&<div style={{flex:1,height:1,background:"var(--bdr)"}}/>}
                 </div>
-              </div>
-              <button onClick={onClose} style={{background:"none",border:"none",color:"var(--sub)",fontSize:20,cursor:"pointer",padding:4}}>×</button>
+              ))}
             </div>
 
-            {/* How it works banner */}
-            <div style={{background:"rgba(10,107,62,0.07)",border:"1px solid rgba(10,107,62,0.2)",borderRadius:10,padding:"10px 12px",marginBottom:16,display:"flex",gap:8,alignItems:"flex-start"}}>
-              <span style={{fontSize:16,flexShrink:0}}>🔒</span>
-              <div style={{fontSize:11,color:"var(--txt)",lineHeight:1.55}}>
-                <strong>Your connection is protected.</strong> We send your request through Xairod's WhatsApp. You get a reference number. We track everything and follow up for you.
-              </div>
-            </div>
-
-            {/* Form */}
-            <div style={{marginBottom:14}}>
-              <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6}}>
-                {lang==="ar"?"ماذا تحتاج؟ *":"What do you need? *"}
+            {/* What do you need */}
+            <div style={{marginBottom:13}}>
+              <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.7}}>
+                What do you need? *
               </label>
               <textarea value={what} onChange={e=>setWhat(e.target.value)}
-                placeholder={placeholder}
-                rows={3}
-                style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"var(--txt)",resize:"none",outline:"none",lineHeight:1.5}}/>
+                placeholder={cfg.placeholder} rows={3}
+                style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"var(--txt)",resize:"none",outline:"none",lineHeight:1.6}}/>
             </div>
 
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            {/* Category-specific extra fields */}
+            {cfg.extras==="school"&&(
+              <div style={{marginBottom:13}}>
+                <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.7}}>Programme / Course</label>
+                <input value={programme} onChange={e=>setProgramme(e.target.value)}
+                  placeholder="e.g. Medicine, Engineering, Arabic Language…"
+                  style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--txt)",outline:"none"}}/>
+              </div>
+            )}
+
+            {cfg.extras==="housing"&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:13}}>
+                <div>
+                  <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.7}}>Move-in Date</label>
+                  <input value={moveIn} onChange={e=>setMoveIn(e.target.value)}
+                    placeholder="e.g. 1 October 2026"
+                    style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--txt)",outline:"none"}}/>
+                </div>
+                <div>
+                  <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.7}}>Duration</label>
+                  <input value={duration} onChange={e=>setDuration(e.target.value)}
+                    placeholder="e.g. 6 months"
+                    style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--txt)",outline:"none"}}/>
+                </div>
+              </div>
+            )}
+
+            {cfg.extras==="group"&&(
+              <div style={{marginBottom:13}}>
+                <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.7}}>Group Size</label>
+                <input value={groupSize} onChange={e=>setGroupSize(e.target.value)}
+                  placeholder="e.g. 1 person, 4 people…"
+                  style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--txt)",outline:"none"}}/>
+              </div>
+            )}
+
+            {/* When + Budget */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
               <div>
-                <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6}}>
-                  {lang==="ar"?"متى؟":"When?"}
-                </label>
+                <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.7}}>{cfg.whenLabel}</label>
                 <input value={when} onChange={e=>setWhen(e.target.value)}
                   placeholder="e.g. This week, ASAP"
                   style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--txt)",outline:"none"}}/>
               </div>
               <div>
-                <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6}}>
-                  {lang==="ar"?"الميزانية":"Budget"}
-                </label>
+                <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.7}}>Budget (optional)</label>
                 <input value={budget} onChange={e=>setBudget(e.target.value)}
-                  placeholder="e.g. 3,000 EGP/mo"
+                  placeholder="e.g. 3,000 EGP"
                   style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--txt)",outline:"none"}}/>
               </div>
             </div>
 
-            <div style={{marginBottom:18}}>
-              <label style={{fontSize:11,fontWeight:700,color:"var(--sub)",display:"block",marginBottom:6}}>
-                Your WhatsApp number (optional — so we can follow up)
-              </label>
-              <input value={whatsapp} onChange={e=>setWhatsapp(e.target.value)}
-                placeholder="+234 xxx xxx xxxx"
-                type="tel"
-                style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:12,color:"var(--txt)",outline:"none"}}/>
+            {/* Trust badge */}
+            <div style={{background:"rgba(10,107,62,0.07)",border:"1px solid rgba(10,107,62,0.18)",borderRadius:10,padding:"10px 12px",marginBottom:16,display:"flex",gap:8,alignItems:"flex-start"}}>
+              <span style={{fontSize:15,flexShrink:0}}>🔒</span>
+              <div style={{fontSize:11,color:"var(--txt)",lineHeight:1.55}}>
+                <strong>Fully protected.</strong> Your request is sent directly to {listing?.name} through Xairod. The business quotes you. You only pay after reviewing the quote. Payment held in escrow until service is complete.
+              </div>
             </div>
 
             {err&&<div style={{background:"rgba(192,57,43,0.08)",border:"1px solid rgba(192,57,43,0.2)",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#C0392B",marginBottom:12}}>⚠️ {err}</div>}
 
             <button onClick={submit} disabled={!what.trim()||loading}
-              style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:what.trim()?"var(--g)":"var(--sand2)",color:what.trim()?"white":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:14,cursor:what.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"background 0.2s"}}>
-              {loading?"Creating your request…":<><span style={{fontSize:18}}>💬</span>{lang==="ar"?"تواصل عبر واتساب":"Connect via WhatsApp →"}</>}
+              style={{width:"100%",padding:"15px",borderRadius:12,border:"none",background:what.trim()&&!loading?cfg.color:"var(--bdr)",color:what.trim()&&!loading?"white":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:15,cursor:what.trim()&&!loading?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s"}}>
+              {loading?"Sending request…":<>{cfg.icon} Send Request →</>}
             </button>
-
-            <div style={{fontSize:10,color:"var(--sub)",textAlign:"center",marginTop:10,lineHeight:1.5}}>
-              WhatsApp will open with your request pre-filled. Send the message to connect.
+            <div style={{fontSize:10,color:"var(--sub)",textAlign:"center",marginTop:8}}>
+              Free to request · Business will quote you · You decide before paying
             </div>
           </>
         )}
 
         {step==="sent"&&(
-          <div style={{textAlign:"center",padding:"16px 0 8px"}}>
-            <div style={{fontSize:52,marginBottom:12}}>✅</div>
-            <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:20,marginBottom:6}}>Request Sent!</div>
-            <div style={{fontSize:13,color:"var(--sub)",lineHeight:1.7,marginBottom:20}}>
-              Your request has been logged and WhatsApp has opened.<br/>
-              Send the message to connect with <strong>{listing?.name}</strong>.
+          <div style={{textAlign:"center",padding:"10px 0 8px"}}>
+            <div style={{fontSize:56,marginBottom:14}}>🎉</div>
+            <div style={{fontFamily:"'Fraunces',serif",fontWeight:900,fontSize:22,marginBottom:8,color:"var(--txt)"}}>Request Sent!</div>
+            <div style={{fontSize:13,color:"var(--sub)",lineHeight:1.8,marginBottom:20}}>
+              Your request has been sent to <strong style={{color:"var(--txt)"}}>{listing?.name}</strong>.<br/>
+              They will review it and send you a quote within the app.
             </div>
-            <div style={{background:"var(--sand)",borderRadius:12,padding:"14px 16px",marginBottom:20}}>
-              <div style={{fontSize:11,color:"var(--sub)",marginBottom:4}}>Your Reference Number</div>
-              <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:900,color:"var(--g)",letterSpacing:1}}>{leadRef}</div>
-              <div style={{fontSize:10,color:"var(--sub)",marginTop:4}}>Save this — we'll use it to track your request</div>
+
+            <div style={{background:"var(--sand)",borderRadius:14,padding:"16px",marginBottom:20,textAlign:"left"}}>
+              <div style={{fontSize:10,color:"var(--sub)",fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>Your Reference</div>
+              <div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:900,color:"var(--g)",letterSpacing:1,marginBottom:4}}>{reqRef}</div>
+              <div style={{fontSize:10,color:"var(--sub)"}}>Track this in My Requests tab</div>
             </div>
-            <div style={{fontSize:12,color:"var(--sub)",lineHeight:1.6,marginBottom:20}}>
-              📱 WhatsApp should have opened automatically.<br/>
-              If not, <button onClick={()=>{
-                const msg=`Hi Xairod! I need help connecting with ${listing?.name}.\n\nReference: ${leadRef}\n\nWhat I need: ${what}`;
-                window.open(`https://wa.me/${XAIROD_WA_NUMBER}?text=${encodeURIComponent(msg)}`,"_blank");
-              }} style={{background:"none",border:"none",color:"var(--g)",fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:12}}>tap here to open it again</button>.
+
+            {/* What happens next */}
+            <div style={{textAlign:"left",marginBottom:20}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--sub)",textTransform:"uppercase",letterSpacing:0.8,marginBottom:10}}>What happens next</div>
+              {[
+                ["💬","Business reviews your request","Now"],
+                ["📋","You receive a quote in the app","Within 24h"],
+                ["✅","You accept quote and pay","Your choice"],
+                ["🎉","Service delivered & confirmed","All in-app"],
+              ].map(([icon,label,time])=>(
+                <div key={label} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"8px 10px",background:"var(--card)",borderRadius:8,border:"1px solid var(--bdr)"}}>
+                  <span style={{fontSize:16,flexShrink:0}}>{icon}</span>
+                  <div style={{flex:1,fontSize:12,color:"var(--txt)",fontWeight:600}}>{label}</div>
+                  <div style={{fontSize:10,color:"var(--sub)"}}>{time}</div>
+                </div>
+              ))}
             </div>
+
             <button onClick={onClose}
-              style={{width:"100%",padding:"12px",borderRadius:12,border:"1.5px solid var(--bdr)",background:"transparent",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer",color:"var(--txt)"}}>
-              Done
+              style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:14,cursor:"pointer"}}>
+              View in My Requests →
             </button>
           </div>
         )}
@@ -3380,7 +3491,7 @@ function MainApp({user,onLogout}){
   const[modal,setModal]=useState(null);
   const[detail,setDetail]=useState(null);
   const[connectListing,setConnectListing]=useState(null);
-  const[myRequests,setMyRequests]=useState([]); // WhatsApp lead modal
+  const[myRequests,setMyRequests]=useState([]); // in-app requests
   const[dark,setDark]=useState(false);
   const[lang,setLang]=useState("en");
   const[groups,setGroups]=useState(GROUPS);
