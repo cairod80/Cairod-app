@@ -1879,27 +1879,41 @@ function ConnectModal({listing, user, lang, onClose}){
       if(duration)  fullDetail+=`\nDuration: ${duration}`;
       if(programme) fullDetail+=`\nProgramme/Course: ${programme}`;
 
-      // Find business account for this listing
-      const{data:bizAccount}=await supabase.from("business_accounts")
-        .select("id").eq("listing_id",listing?.id).single().catch(()=>({data:null}));
+      // Find business account for this listing safely — mayfail if not linked yet
+      let assignedBizId=null;
+      if(listing?.id){
+        const{data:bizRows}=await supabase.from("business_accounts")
+          .select("id,user_id").eq("listing_id",listing.id).limit(1);
+        if(bizRows&&bizRows.length>0) assignedBizId=bizRows[0].id;
+      }
 
-      // Create service_request (in-app)
-      const{data:req,error:reqErr}=await supabase.from("service_requests").insert({
+      // Create service_request
+      const insertPayload={
         user_id:user.id,
         listing_id:listing?.id||null,
         listing_name:listing?.name||"",
         listing_category:cat,
-        assigned_business_id:bizAccount?.id||null,
         what_i_need:fullDetail,
         when_needed:when.trim()||null,
         budget:budget.trim()||null,
         status:"open",
-      }).select("ref").single();
+      };
+      // Only set assigned_business_id if the column exists and we have a value
+      if(assignedBizId) insertPayload.assigned_business_id=assignedBizId;
 
-      if(reqErr)throw reqErr;
+      const{data:reqData,error:reqErr}=await supabase
+        .from("service_requests").insert(insertPayload).select().single();
 
-      // Also create lead for admin tracking
-      await supabase.from("leads").insert({
+      if(reqErr){
+        // Show the real error so we can debug
+        setErr("Request failed: "+reqErr.message);
+        setLoading(false);return;
+      }
+
+      const ref=reqData?.ref||reqData?.id?.slice(0,8)||"XR-REQ-"+Date.now();
+
+      // Create lead for admin tracking — fire and forget
+      supabase.from("leads").insert({
         user_id:user.id,
         listing_id:listing?.id||null,
         listing_name:listing?.name||"",
@@ -1911,26 +1925,34 @@ function ConnectModal({listing, user, lang, onClose}){
         status:"new",
       }).catch(()=>{});
 
-      // Notify business in-app
-      if(bizAccount?.id){
-        const{data:bizUser}=await supabase.from("business_accounts")
-          .select("user_id").eq("id",bizAccount.id).single().catch(()=>({data:null}));
-        if(bizUser?.user_id){
-          await supabase.from("notifications").insert({
-            user_id:bizUser.user_id,
-            icon:cfg.icon,
-            message:`New booking request from ${user.name||"a user"} for ${listing?.name}. Reference: ${req.ref}`,
-            type:"new_request",
-            metadata:{request_ref:req.ref,listing_name:listing?.name}
+      // Notify business — fire and forget
+      if(assignedBizId){
+        supabase.from("business_accounts")
+          .select("user_id").eq("id",assignedBizId).limit(1)
+          .then(({data:bizRows})=>{
+            const uid=bizRows?.[0]?.user_id;
+            if(uid){
+              supabase.from("notifications").insert({
+                user_id:uid,
+                icon:cfg.icon,
+                message:`New request from ${user.name||"a user"} for ${listing?.name}. Reference: ${ref}`,
+                type:"new_request",
+                metadata:{request_ref:ref,listing_name:listing?.name}
+              }).catch(()=>{});
+            }
           }).catch(()=>{});
-        }
       }
 
-      setReqRef(req.ref||"XR-REQ-??????");
+      // Reload user's requests in background
+      supabase.from("service_requests").select("*,quotes(*)")
+        .eq("user_id",user.id).order("created_at",{ascending:false})
+        .then(({data})=>{if(data)setMyRequests(data);}).catch(()=>{});
+
+      setReqRef(ref);
       setStep("sent");
     }catch(e){
-      setErr("Something went wrong. Please try again.");
-      console.error(e);
+      setErr("Error: "+((e?.message)||"Unknown error. Check your connection."));
+      console.error("BookingModal submit error:",e);
     }
     setLoading(false);
   };
