@@ -2666,10 +2666,46 @@ function DetailModal({item,onClose,saved,onSave,lang,onConnect}){
         <p style={{fontSize:13,color:"var(--sub)",lineHeight:1.65,marginBottom:13}}>{item.desc}</p>
         <div className="info-grid">
           <div className="info-cell"><div className="info-label">📍 Location</div><div className="info-value">{item.city}</div></div>
-          <div className="info-cell"><div className="info-label">🕐 Hours</div><div className="info-value">{item.hours}</div></div>
+          <div className="info-cell"><div className="info-label">🕐 Hours</div><div className="info-value">{item.hours||"—"}</div></div>
           <div className="info-cell"><div className="info-label">📞 Contact</div><div className="info-value" style={{fontSize:10}}>{item.phone}</div></div>
           <div className="info-cell"><div className="info-label">💰 Price</div><div className="info-value">{item.price}</div></div>
         </div>
+
+        {/* Services from business portal — live from Supabase */}
+        {item.services&&item.services.length>0&&(
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--sub)",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>Services & Pricing</div>
+            {item.services.map((svc,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 12px",background:"var(--sand)",borderRadius:9,marginBottom:6,border:"1px solid var(--bdr)"}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:"var(--txt)"}}>{svc.name}</div>
+                  {svc.duration_mins>0&&<div style={{fontSize:10,color:"var(--sub)"}}>⏱ {svc.duration_mins<60?svc.duration_mins+"min":Math.floor(svc.duration_mins/60)+"h"}</div>}
+                </div>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:900,color:"var(--g)"}}>{parseFloat(svc.price||0).toLocaleString()} {svc.currency||"NGN"}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Opening hours from business portal */}
+        {item.opening_hours&&Object.keys(item.opening_hours).length>0&&(
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--sub)",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>Opening Hours</div>
+            <div style={{background:"var(--sand)",borderRadius:10,padding:"10px 14px",border:"1px solid var(--bdr)"}}>
+              {["mon","tue","wed","thu","fri","sat","sun"].map(d=>{
+                const h=item.opening_hours[d];
+                if(!h) return null;
+                const label={"mon":"Mon","tue":"Tue","wed":"Wed","thu":"Thu","fri":"Fri","sat":"Sat","sun":"Sun"}[d];
+                return(
+                  <div key={d} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid var(--bdr)"}}>
+                    <div style={{fontSize:11,fontWeight:600,color:h.open?"var(--txt)":"var(--sub)"}}>{label}</div>
+                    <div style={{fontSize:11,color:h.open?"var(--txt)":"var(--sub)"}}>{h.open?`${h.from} – ${h.to}`:"Closed"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* F-081 — Get Directions (Google Maps) */}
         <button onClick={openDirections} style={{width:"100%",background:"var(--card)",border:"1.5px solid var(--bdr)",color:"var(--g)",borderRadius:11,padding:"11px",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
