@@ -597,12 +597,12 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
           currency:PAYSTACK_CURRENCY,
         });
         // Notify business
-        await supabase.from("notifications").insert({
+        await (async()=>{try{await supabase.from("notifications").insert({
           user_id:quote.business_id,icon:"💰",
           message:`Payment received for request ${req.ref}. Deliver the service to release your payout.`,
           type:"payment_received",
           metadata:{request_ref:req.ref,amount:quote.price}
-        }).catch(()=>{});
+        });}catch{}})();
         setPaying(false);setPaymentModal(null);
         onRefresh();
       },
@@ -1913,7 +1913,7 @@ function ConnectModal({listing, user, lang, onClose}){
       const ref=reqData?.ref||reqData?.id?.slice(0,8)||"XR-REQ-"+Date.now();
 
       // Create lead for admin tracking — fire and forget
-      supabase.from("leads").insert({
+      (async()=>{try{await supabase.from("leads").insert({
         user_id:user.id,
         listing_id:listing?.id||null,
         listing_name:listing?.name||"",
@@ -1923,30 +1923,32 @@ function ConnectModal({listing, user, lang, onClose}){
         when_needed:when.trim()||null,
         budget:budget.trim()||null,
         status:"new",
-      }).catch(()=>{});
+      });}catch{}})();
 
       // Notify business — fire and forget
       if(assignedBizId){
         supabase.from("business_accounts")
           .select("user_id").eq("id",assignedBizId).limit(1)
-          .then(({data:bizRows})=>{
+          .then(async({data:bizRows})=>{
             const uid=bizRows?.[0]?.user_id;
             if(uid){
-              supabase.from("notifications").insert({
-                user_id:uid,
-                icon:cfg.icon,
-                message:`New request from ${user.name||"a user"} for ${listing?.name}. Reference: ${ref}`,
-                type:"new_request",
-                metadata:{request_ref:ref,listing_name:listing?.name}
-              }).catch(()=>{});
+              try{
+                await supabase.from("notifications").insert({
+                  user_id:uid,
+                  icon:cfg.icon,
+                  message:`New request from ${user.name||"a user"} for ${listing?.name}. Reference: ${ref}`,
+                  type:"new_request",
+                  metadata:{request_ref:ref,listing_name:listing?.name}
+                });
+              }catch{}
             }
-          }).catch(()=>{});
+          });
       }
 
       // Reload user's requests in background
       supabase.from("service_requests").select("*,quotes(*)")
         .eq("user_id",user.id).order("created_at",{ascending:false})
-        .then(({data})=>{if(data)setMyRequests(data);}).catch(()=>{});
+        .then(({data})=>{if(data)setMyRequests(data);});
 
       setReqRef(ref);
       setStep("sent");
@@ -4365,7 +4367,7 @@ export default function App(){
           setScreen("app");
         }
       }
-    }).catch(()=>{/* Supabase unreachable — stay on onboard */});
+    });  // getSession — if unreachable, stays on onboard
 
     const{data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
       if(event==="SIGNED_OUT"||!session){setUser(null);setScreen("onboard");}
