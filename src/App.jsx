@@ -444,7 +444,7 @@ function ToastStack(){
     </div>
   );
 }
-function NotifBell({lang}){
+function NotifBell({lang,onGoToRequests}){
   const{notifs,unread,markRead,toggleStar,markAllRead}=useNotif();
   const[open,setOpen]=useState(false);
   const[activeTab,setActiveTab]=useState("inbox");
@@ -480,11 +480,23 @@ function NotifBell({lang}){
           <div style={{overflowY:"auto",flex:1}}>
             {!list.length?<div style={{padding:"28px 14px",textAlign:"center",color:"var(--sub)",fontSize:11}}>Nothing here yet</div>:
             list.map(n=>(
-              <div key={n.id} onClick={()=>{if(!n.is_read)markRead(n.id);setDetail(n);}} style={{display:"flex",gap:9,padding:"10px 12px",cursor:"pointer",background:n.is_read?"transparent":"rgba(10,107,62,0.04)",borderBottom:"1px solid var(--bdr)",alignItems:"flex-start"}}>
+              <div key={n.id} onClick={()=>{
+                if(!n.is_read)markRead(n.id);
+                // Request/quote/payment notifications → open My Requests tab
+                if(["new_request","quote","completion","payment_received","quote_accepted","kyc_approved","kyc_rejected"].includes(n.type)){
+                  setNotifOpen(false);
+                  onGoToRequests&&onGoToRequests();
+                } else {
+                  setDetail(n);
+                }
+              }} style={{display:"flex",gap:9,padding:"10px 12px",cursor:"pointer",background:n.is_read?"transparent":"rgba(10,107,62,0.04)",borderBottom:"1px solid var(--bdr)",alignItems:"flex-start"}}>
                 <div style={{fontSize:16,width:28,height:28,borderRadius:7,background:n.bg_color||"rgba(10,107,62,0.12)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{n.icon||"🔔"}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:11,fontWeight:n.is_read?500:700,lineHeight:1.3,marginBottom:1}}>{n.message}</div>
                   {n.detail&&<div style={{fontSize:10,color:"var(--sub)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.detail}</div>}
+                  {["quote","payment_received","completion"].includes(n.type)&&(
+                    <div style={{fontSize:9,color:"var(--g)",fontWeight:700,marginTop:3}}>Tap to view in My Requests →</div>
+                  )}
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0,alignItems:"center"}}>
                   {!n.is_read&&<div style={{width:6,height:6,borderRadius:"50%",background:"var(--g)"}}/>}
@@ -3623,7 +3635,7 @@ function MainApp({user,onLogout}){
     {id:"tips",   label:t.tips,      icon:NAV[2].icon},
     {id:"community",label:t.community,icon:NAV[3].icon},
     {id:"groups", label:t.groups,    icon:NAV[4].icon},
-    {id:"sub",    label:t.plans,     icon:NAV[5].icon},
+    // Plans tab removed — no subscriptions in commission model
     {id:"profile",label:t.profile,   icon:NAV[6].icon},
   ];
   const[saved,setSaved]=useState(new Set());
@@ -3765,7 +3777,7 @@ function MainApp({user,onLogout}){
                 {planInfo?.icon} {planInfo?.label}
               </div>
             )}
-            <NotifBell lang={lang}/>
+            <NotifBell lang={lang} onGoToRequests={()=>setTab("requests")}/>
             <button className="icon-btn" onClick={()=>setDark(!dark)}>{dark?"☀️":"🌙"}</button>
             <button className="icon-btn" onClick={()=>setLang(l=>l==="en"?"ar":"en")} style={{fontSize:11,fontWeight:800,minWidth:32,padding:"4px 6px"}}>{t.language}</button>
             {user?.isAdmin&&(
@@ -4056,7 +4068,10 @@ function MainApp({user,onLogout}){
         {tab==="profile"&&(
           <div className="page-pad">
             <div className="profile-head">
-              <div className="profile-ava">🧑🏾</div>
+              {(userProfile?.avatarUrl||user?.avatarUrl)
+                ? <div className="profile-ava" style={{backgroundImage:`url(${userProfile?.avatarUrl||user?.avatarUrl})`,backgroundSize:"cover",backgroundPosition:"center",backgroundRepeat:"no-repeat"}}/>
+                : <div className="profile-ava">🧑🏾</div>
+              }
               <div className="profile-name">{userProfile?.name||user?.name||"My Profile"}</div>
               <div className="profile-sub">{userProfile?.email||user?.email} · {planInfo?.icon} {planInfo?.label}</div>
               {userProfile?.city&&<div style={{fontSize:12,color:"var(--sub)",marginTop:2}}>📍 {userProfile.city}</div>}
@@ -4066,15 +4081,7 @@ function MainApp({user,onLogout}){
               <div className="profile-stat"><div className="pstat-n">3</div><div className="pstat-l">Reviews</div></div>
               <div className="profile-stat"><div className="pstat-n">7</div><div className="pstat-l">Posts</div></div>
             </div>
-            <div style={{margin:"14px 17px 0"}}>
-              <div style={{background:`${planInfo?.color}10`,border:`1px solid ${planInfo?.color}30`,borderRadius:12,padding:13,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setTab("sub")}>
-                <div>
-                  <div style={{fontWeight:700,fontSize:13}}>{planInfo?.icon} {planInfo?.label} Plan</div>
-                  <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>{plan==="basic"?"Upgrade for more features":"Active subscription"}</div>
-                </div>
-                <span style={{color:planInfo?.color,fontWeight:700,fontSize:12}}>{plan==="basic"?"Upgrade →":"Manage →"}</span>
-              </div>
-            </div>
+
             <div className="settings-section">
               <div className="settings-title">Settings</div>
               <div className="setting-row">
@@ -4090,7 +4097,22 @@ function MainApp({user,onLogout}){
                 <button className={`toggle ${af1st?"on":"off"}`} onClick={()=>setAf1st(!af1st)}/>
               </div>
               <div className="settings-title" style={{marginTop:14}}>Account</div>
-              {[["📝","Edit Profile",()=>setEditProfileOpen(true)],["🌍","Change City",()=>setEditProfileOpen(true)],["✈️","Join Telegram Community",()=>{markTelegramJoined();window.open(TELEGRAM_URL,"_blank");}],["📤",t.shareBtn,async()=>{if(navigator.share){try{await navigator.share({title:t.shareTitle,text:t.shareText,url:"https://xairod.com"});}catch(e){}}else{try{await navigator.clipboard.writeText("https://xairod.com");alert("xairod.com copied to clipboard!");}catch(e){window.open("https://wa.me/?text="+encodeURIComponent(t.shareText+" https://xairod.com"),"_blank");}}}],["💬","Send Feedback",()=>{}],["⭐","Rate the App",()=>{}],["🔒","Privacy Policy",()=>window.open("/privacy","_blank")],["📄","Terms & Conditions",()=>window.open("/terms","_blank")]].map(([ic,lb,action],i)=>(
+              {[["📝","Edit Profile",()=>setEditProfileOpen(true)],["🌍","Change City",()=>setEditProfileOpen(true)],["✈️","Join Telegram Community",()=>{markTelegramJoined();window.open(TELEGRAM_URL,"_blank");}],["📤",t.shareBtn,async()=>{if(navigator.share){try{await navigator.share({title:t.shareTitle,text:t.shareText,url:"https://xairod.com"});}catch(e){}}else{try{await navigator.clipboard.writeText("https://xairod.com");alert("xairod.com copied to clipboard!");}catch(e){window.open("https://wa.me/?text="+encodeURIComponent(t.shareText+" https://xairod.com"),"_blank");}}}],["💬","Send Feedback",()=>{
+                  const subject=encodeURIComponent("Xairod App Feedback");
+                  const body=encodeURIComponent("Hi Xairod team,\n\nHere is my feedback:\n\n");
+                  window.open("mailto:hello@xairod.com?subject="+subject+"&body="+body,"_blank");
+                }],["⭐","Rate the App",()=>{
+                  // Open app store rating — iOS or Android
+                  const ua=navigator.userAgent.toLowerCase();
+                  if(ua.includes("android")){
+                    window.open("https://play.google.com/store/apps/details?id=com.xairod.app","_blank");
+                  } else if(ua.includes("iphone")||ua.includes("ipad")){
+                    window.open("https://apps.apple.com/app/xairod/id000000000","_blank");
+                  } else {
+                    // Web — open feedback email instead
+                    window.open("mailto:hello@xairod.com?subject=App%20Rating&body=I%20rate%20Xairod%205%20stars!%20Here%27s%20why:","_blank");
+                  }
+                }],["🔒","Privacy Policy",()=>window.open("/privacy","_blank")],["📄","Terms & Conditions",()=>window.open("/terms","_blank")]].map(([ic,lb,action],i)=>(
                 <div key={i} className="setting-row" style={{cursor:"pointer"}} onClick={action}>
                   <div className="setting-label">{ic}&nbsp;&nbsp;{lb}</div>
                   <span style={{color:"var(--sub)",fontSize:15}}>›</span>
@@ -4254,7 +4276,7 @@ function MainApp({user,onLogout}){
         {tab==="study"&&<StudyRoom user={user} lang={lang}/>}
         {tab==="health"&&<HealthScreen user={user} lang={lang} listings={listings} setConnectListing={setConnectListing}/>}
         {tab==="requests"&&<MyRequestsScreen user={user} lang={lang} requests={myRequests} onRefresh={()=>{
-          supabase.from("service_requests").select("*,quotes(*)").eq("user_id",user.id).order("created_at",{ascending:false}).then(({data})=>{if(data)setMyRequests(data);});
+          supabase.from("service_requests").select("*,quotes(*)").eq("user_id",user?.id).order("created_at",{ascending:false}).then(({data})=>{if(data)setMyRequests(data);});
         }}/>}
 
         {/* ── MODALS ── */}
@@ -4262,7 +4284,7 @@ function MainApp({user,onLogout}){
         {modal==="arrive"&&<SheetModal tips={ARRIVE} title="🎓 Student Guide" onClose={()=>setModal(null)}/>}
         {detail&&<DetailModal item={detail} onClose={()=>setDetail(null)} saved={saved.has(detail.id)} onSave={toggleSave} lang={lang} onConnect={l=>setConnectListing(l)}/>}
         {connectListing&&<ConnectModal listing={connectListing} user={user} lang={lang} onClose={()=>setConnectListing(null)}/>}
-        {editProfileOpen&&<EditProfileModal user={userProfile||user} onClose={()=>setEditProfileOpen(false)} onSave={u=>{setUserProfile(u);setEditProfileOpen(false);}}/>}
+        {editProfileOpen&&<EditProfileModal user={userProfile||user} onClose={()=>setEditProfileOpen(false)} onSave={u=>{setUserProfile(u);setUser(u);setEditProfileOpen(false);}}/>}
       </div>{/* end main-scroll */}
       </div>{/* end app-content */}
 
