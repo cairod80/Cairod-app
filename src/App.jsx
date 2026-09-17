@@ -834,477 +834,362 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
 }
 
 
+// ════════════════════════════════════════════════════════════════════════════
+// HEALTH SCREEN v2 — Medical Concierge + Cairo Care
+// Two paths: Medical Tourism (coming to Egypt) + Daily Care (in Cairo)
+// ════════════════════════════════════════════════════════════════════════════
 function HealthScreen({user,lang,listings,setConnectListing}){
-  const[mode,setMode]=useState("home");
-  const[typeFilter,setTypeFilter]=useState("all");
-  const[search,setSearch]=useState("");
-  const[triageStep,setTriageStep]=useState(1);
-  const[triageType,setTriageType]=useState(null);
-  const[triageUrgency,setTriageUrgency]=useState(null);
-  const[triageDetails,setTriageDetails]=useState("");
-  const[triageHomeVisit,setTriageHomeVisit]=useState(false);
-  const[triageBudget,setTriageBudget]=useState("");
-  const[triageLang,setTriageLang]=useState("english");
-  const[triageMatches,setTriageMatches]=useState([]);
+  const[path,setPath]=useState("home"); // home | care | tourism | intake | package | clinics
 
-  const HEALTH_TYPES=[
-    {id:"all",    label:"All",          emoji:"🏥", color:"#C0392B"},
-    {id:"clinic", label:"Clinic",       emoji:"🏥", color:"#C0392B"},
-    {id:"doctor", label:"Doctor",       emoji:"👨‍⚕️", color:"#2471A3"},
-    {id:"lab",    label:"Lab Test",     emoji:"🧪", color:"#8E44AD"},
-    {id:"pharmacy",label:"Pharmacy",    emoji:"💊", color:"#0A6B3E"},
-    {id:"mental", label:"Mental Health",emoji:"🧠", color:"#C8861A"},
-    {id:"emergency",label:"Urgent Care",emoji:"🚨",color:"#C0392B"},
+  // Medical tourism intake state
+  const[intakeStep,setIntakeStep]=useState(1);
+  const[procedure,setProcedure]=useState(null);
+  const[budget,setBudget]=useState("");
+  const[travelDate,setTravelDate]=useState("");
+  const[country,setCountry]=useState("");
+  const[notes,setNotes]=useState("");
+  const[medFile,setMedFile]=useState(null);
+  const[submitting,setSubmitting]=useState(false);
+  const[submitted,setSubmitted]=useState(false);
+  const[caseRef,setCaseRef]=useState("");
+
+  // Cairo care state
+  const[careFilter,setCareFilter]=useState("all");
+  const[careSearch,setCareSearch]=useState("");
+
+  const PROCEDURES=[
+    {id:"cardiac",    icon:"❤️",  label:"Cardiac Surgery",      sub:"Angioplasty, bypass, valve repair",         price:"$2,000–$8,000"},
+    {id:"oncology",   icon:"🔬",  label:"Cancer Treatment",     sub:"Chemotherapy, radiotherapy, surgery",        price:"$3,000–$15,000"},
+    {id:"ivf",        icon:"👶",  label:"IVF & Fertility",      sub:"IVF, IUI, egg freezing, embryo transfer",    price:"$1,500–$4,000"},
+    {id:"ortho",      icon:"🦴",  label:"Orthopaedic",          sub:"Hip/knee replacement, spine, sports injury", price:"$2,500–$9,000"},
+    {id:"dental",     icon:"🦷",  label:"Dental",               sub:"Implants, veneers, orthodontics, crowns",    price:"$300–$3,000"},
+    {id:"eye",        icon:"👁️",  label:"Eye Surgery",          sub:"LASIK, cataract, retina, glaucoma",         price:"$500–$2,500"},
+    {id:"cosmetic",   icon:"✨",  label:"Cosmetic Surgery",     sub:"Rhinoplasty, liposuction, tummy tuck",       price:"$1,500–$6,000"},
+    {id:"checkup",    icon:"🩺",  label:"Full Health Checkup",  sub:"Comprehensive medical assessment package",    price:"$200–$800"},
+    {id:"neuro",      icon:"🧠",  label:"Neurology",            sub:"Brain, spine, epilepsy, stroke treatment",   price:"$3,000–$12,000"},
+    {id:"other",      icon:"🏥",  label:"Other / Not Listed",   sub:"Describe your condition in the notes",       price:"Custom quote"},
   ];
 
-  const TRIAGE_TYPES=[
-    {id:"doctor",   emoji:"👨‍⚕️", label:"See a doctor or specialist",  sub:"GP, specialist, consultation"},
-    {id:"lab",      emoji:"🧪",         label:"Lab test or blood work",       sub:"CBC, malaria, vitamin D, etc."},
-    {id:"pharmacy", emoji:"💊",         label:"Find a pharmacy",              sub:"Medication, prescription fill"},
-    {id:"mental",   emoji:"🧠",         label:"Mental health support",        sub:"Counselling, therapy, support"},
-    {id:"emergency",emoji:"🚨",         label:"Emergency or urgent care",     sub:"Immediate attention needed"},
-    {id:"other",    emoji:"🌿",         label:"Something else",               sub:"Describe your need below"},
+  const CARE_TYPES=[
+    {id:"all",      label:"All",           emoji:"🏥", color:"#C0392B"},
+    {id:"clinic",   label:"Clinic",        emoji:"🏥", color:"#C0392B"},
+    {id:"doctor",   label:"Doctor",        emoji:"👨‍⚕️", color:"#2471A3"},
+    {id:"lab",      label:"Lab Test",      emoji:"🧪", color:"#8E44AD"},
+    {id:"pharmacy", label:"Pharmacy",      emoji:"💊", color:"#0A6B3E"},
+    {id:"mental",   label:"Mental Health", emoji:"🧠", color:"#C8861A"},
   ];
 
-  const URGENCY=[
-    {id:"routine", emoji:"📅", label:"No rush",   sub:"Within a week is fine",  color:"#0A6B3E",  bg:"rgba(10,107,62,0.08)"},
-    {id:"soon",    emoji:"⚡", label:"Soon",      sub:"Within 1–2 days",        color:"#C8861A",  bg:"rgba(200,134,26,0.08)"},
-    {id:"urgent",  emoji:"🚨", label:"Urgent",    sub:"Today if possible",      color:"#C0392B",  bg:"rgba(192,57,43,0.08)"},
+  const HOSPITALS=[
+    {id:"h1",name:"Dar Al Fouad Hospital",   city:"6th October",specialities:["cardiac","neuro","ortho","oncology"],  accredited:true, rating:4.8, rc:312, img:"🏥",price:"$$$$",en:true},
+    {id:"h2",name:"Cairo University Hospital",city:"Giza",       specialities:["oncology","neuro","ivf","general"],    accredited:true, rating:4.5, rc:188, img:"🏛️",price:"$$",  en:true},
+    {id:"h3",name:"Al-Salam Hospital",       city:"Heliopolis",  specialities:["cardiac","ortho","eye","dental"],       accredited:true, rating:4.6, rc:241, img:"🏥",price:"$$$", en:true},
+    {id:"h4",name:"Cleopatra Hospital",      city:"Heliopolis",  specialities:["oncology","ivf","checkup","cosmetic"], accredited:true, rating:4.4, rc:156, img:"🏥",price:"$$$", en:true},
+    {id:"h5",name:"Saudi German Hospital",   city:"Cairo",       specialities:["cardiac","neuro","ortho","eye"],        accredited:true, rating:4.7, rc:278, img:"🏥",price:"$$$", en:true},
   ];
 
-  const healthListings=listings.filter(l=>
-    l.cat==="health"||l.category==="health"||
-    (l.name||"").toLowerCase().includes("clinic")||
-    (l.name||"").toLowerCase().includes("hospital")||
-    (l.name||"").toLowerCase().includes("doctor")||
-    (l.name||"").toLowerCase().includes("lab")||
-    (l.name||"").toLowerCase().includes("pharmacy")
-  );
+  const healthListings=(listings.filter?listings.filter(l=>l.cat==="health"):DATA.filter(d=>d.cat==="health"));
+  const careListings=healthListings.filter(l=>(careFilter==="all"||l.subcat===careFilter)&&(careSearch===""||l.name.toLowerCase().includes(careSearch.toLowerCase())));
+  const matchedHospitals=procedure?HOSPITALS.filter(h=>h.specialities.includes(procedure)||h.specialities.includes("general")):HOSPITALS;
 
-  const filtered=healthListings.filter(l=>{
-    const matchType=typeFilter==="all"||
-      (l.name+l.description+l.cat+l.category).toLowerCase().includes(typeFilter);
-    const matchSearch=!search||
-      (l.name+l.description+l.city).toLowerCase().includes(search.toLowerCase());
-    return matchType&&matchSearch;
-  });
+  const submitIntake=async()=>{
+    if(!user){alert("Please sign in to request a medical package.");return;}
+    setSubmitting(true);
+    const ref="XR-MED-"+Math.floor(100000+Math.random()*900000);
+    const detail=`Procedure: ${PROCEDURES.find(p=>p.id===procedure)?.label||procedure}
+Country: ${country}
+Travel date: ${travelDate||"Flexible"}
+Budget: ${budget||"Open"}
+Notes: ${notes}`;
+    try{
+      await supabase.from("leads").insert({
+        user_id:user.id,user_name:user.name||"",
+        listing_name:"Xairod Medical Concierge",listing_category:"health",
+        what_i_need:detail,when_needed:travelDate||"Flexible",budget,status:"new",
+      });
+      await supabase.from("notifications").insert({
+        user_id:user.id,icon:"🏥",
+        message:`Your medical enquiry (${ref}) has been received. A Xairod Case Manager will contact you within 24 hours.`,
+        type:"medical_intake",metadata:{ref,procedure,country}
+      });
+    }catch(e){console.warn("Intake save error:",e);}
+    setCaseRef(ref);setSubmitted(true);setSubmitting(false);
+  };
 
-  // ── STAR RATING ─────────────────────────────────────────────────────────
-  const Stars=({rating=0,count=0})=>(
-    <div style={{display:"flex",alignItems:"center",gap:4}}>
-      <div style={{display:"flex",gap:1}}>
-        {[1,2,3,4,5].map(i=>(
-          <svg key={i} width="10" height="10" viewBox="0 0 24 24" fill={i<=Math.round(rating)?"#C8861A":"#EDE4CC"}>
-            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-          </svg>
-        ))}
-      </div>
-      <span style={{fontSize:10,color:"var(--sub)"}}>{rating>0?`${rating}`:""}{count>0?` · ${count} reviews`:""}</span>
-    </div>
-  );
-
-  // ── PROVIDER CARD ────────────────────────────────────────────────────────
-  const ProviderCard=({item,rank,onConnect})=>(
-    <div onClick={()=>onConnect(item)}
-      style={{background:"var(--bg)",border:"1.5px solid",borderColor:rank===0?"var(--g)":"var(--bdr)",borderRadius:16,overflow:"hidden",marginBottom:12,cursor:"pointer",boxShadow:rank===0?"0 4px 20px rgba(10,107,62,0.12)":"0 2px 8px rgba(0,0,0,0.04)",transition:"transform 0.15s,box-shadow 0.15s"}}>
-      {/* Top accent */}
-      <div style={{height:3,background:rank===0?"var(--g)":"var(--bdr)"}}/>
-      <div style={{padding:"14px 14px 12px"}}>
-        <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:10}}>
-          {/* Icon */}
-          <div style={{width:48,height:48,borderRadius:12,background:rank===0?"var(--g)":"rgba(192,57,43,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
-            {item.icon||"🏥"}
-          </div>
-          {/* Info */}
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:3}}>
-              <span style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:14,color:"var(--txt)"}}>{item.name}</span>
-              {item.verified&&(
-                <span style={{background:"#E8F5EE",color:"var(--g)",fontSize:8,fontWeight:800,padding:"2px 6px",borderRadius:4,letterSpacing:0.3}}>✓ VERIFIED</span>
-              )}
-              {rank===0&&(
-                <span style={{background:"var(--g)",color:"white",fontSize:8,fontWeight:800,padding:"2px 6px",borderRadius:4,letterSpacing:0.3}}>TOP</span>
-              )}
-            </div>
-            <div style={{fontSize:11,color:"var(--sub)",marginBottom:4}}>📍 {item.city}</div>
-            <Stars rating={item.rating} count={item.review_count}/>
-          </div>
-        </div>
-        {/* Description */}
-        {item.description&&(
-          <div style={{fontSize:11,color:"var(--sub)",lineHeight:1.6,marginBottom:10,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
-            {item.description}
-          </div>
-        )}
-        {/* Tags */}
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-          <span style={{background:"rgba(10,107,62,0.08)",color:"var(--g)",fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:20}}>
-            🇬🇧 English speaking
-          </span>
-          <span style={{background:"rgba(10,107,62,0.08)",color:"var(--g)",fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:20}}>
-            🔒 Xairod protected
-          </span>
-        </div>
-        {/* CTA */}
-        <button onClick={e=>{e.stopPropagation();onConnect(item);}}
-          style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:rank===0?"var(--g)":"#C0392B",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-          📋 Book / Request →
+  // ── HOME ──────────────────────────────────────────────────────────────────
+  if(path==="home") return(
+    <div style={{padding:"0 17px 80px"}}>
+      {/* Hero */}
+      <div style={{background:"linear-gradient(135deg,#03311A,#0A6B3E)",borderRadius:16,padding:"22px 18px",margin:"14px 0",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:-20,right:-20,width:100,height:100,borderRadius:"50%",background:"rgba(77,217,148,0.08)"}}/>
+        <div style={{fontSize:9,fontWeight:800,color:"#4DD994",letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Xairod Medical</div>
+        <div style={{fontFamily:"'Fraunces',serif",fontWeight:900,fontSize:22,color:"white",marginBottom:6,lineHeight:1.2}}>World-class treatment.<br/>African patient care.</div>
+        <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",lineHeight:1.6,marginBottom:16}}>From consultation to recovery — hospital, flights, housing and on-ground support in one place.</div>
+        <button onClick={()=>setPath("tourism")}
+          style={{background:"#4DD994",color:"#03311A",border:"none",padding:"11px 20px",borderRadius:10,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"'Outfit',sans-serif",width:"100%"}}>
+          ✈️ Plan Medical Trip to Egypt →
         </button>
       </div>
-    </div>
-  );
 
-  // ── STEP INDICATOR ───────────────────────────────────────────────────────
-  const StepDot=({n,done,active})=>(
-    <div style={{width:28,height:28,borderRadius:"50%",
-      background:done?"var(--g)":active?"#C0392B":"var(--sand)",
-      color:done||active?"white":"var(--sub)",
-      fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",
-      flexShrink:0,boxShadow:active?"0 0 0 4px rgba(192,57,43,0.15)":"none",
-      transition:"all 0.25s"}}>
-      {done?"✓":n}
-    </div>
-  );
-
-  const StepLine=({done})=>(
-    <div style={{flex:1,height:2,borderRadius:2,
-      background:done?"var(--g)":"var(--bdr)",transition:"background 0.25s"}}/>
-  );
-
-  const AIBubble=({text})=>(
-    <div style={{background:"var(--gd)",borderRadius:"0 16px 16px 16px",padding:"14px 16px",marginBottom:16,position:"relative"}}>
-      <div style={{position:"absolute",top:-10,left:-2,width:22,height:22,borderRadius:"50%",background:"var(--g)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>🤖</div>
-      <div style={{fontSize:12,color:"rgba(254,252,247,0.9)",lineHeight:1.65}}>{text}</div>
-    </div>
-  );
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // HOME SCREEN
-  // ══════════════════════════════════════════════════════════════════════════
-  if(mode==="home")return(
-    <div style={{paddingBottom:24}}>
-      {/* Hero banner */}
-      <div style={{background:"linear-gradient(135deg,#03311A 0%,#0A6B3E 60%,#0A6B3E 100%)",padding:"28px 20px 24px",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(ellipse at 80% 20%,rgba(77,217,148,0.15) 0%,transparent 50%),radial-gradient(ellipse at 20% 80%,rgba(200,134,26,0.1) 0%,transparent 50%)"}}/>
-        <div style={{position:"relative"}}>
-          <div style={{display:"inline-block",background:"rgba(192,57,43,0.9)",color:"white",fontSize:9,fontWeight:800,padding:"4px 10px",borderRadius:20,marginBottom:10,letterSpacing:1}}>🏥 HEALTH SERVICES</div>
-          <div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:900,color:"white",lineHeight:1.15,marginBottom:6}}>Healthcare for<br/>Africans in Cairo</div>
-          <div style={{fontSize:12,color:"rgba(254,252,247,0.7)",lineHeight:1.6,marginBottom:16}}>Verified clinics, doctors & labs. Your request is private and protected through Xairod.</div>
-          {/* Quick search */}
-          <div style={{background:"rgba(255,255,255,0.1)",backdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:14}}>🔍</span>
-            <input value={search} onChange={e=>{setSearch(e.target.value);setMode("browse");}}
-              placeholder="Search clinics, doctors, labs…"
-              style={{background:"none",border:"none",outline:"none",fontSize:12,color:"rgba(254,252,247,0.9)",fontFamily:"'Outfit',sans-serif",flex:1}}/>
-          </div>
-        </div>
+      {/* Two paths */}
+      <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:16,margin:"16px 0 10px"}}>What do you need?</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+        <button onClick={()=>setPath("tourism")}
+          style={{background:"rgba(192,57,43,0.07)",border:"1.5px solid rgba(192,57,43,0.2)",borderRadius:14,padding:"16px 14px",textAlign:"left",cursor:"pointer"}}>
+          <div style={{fontSize:28,marginBottom:8}}>✈️</div>
+          <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:14,color:"var(--txt)",marginBottom:4}}>Coming to Egypt</div>
+          <div style={{fontSize:10,color:"var(--sub)",lineHeight:1.5}}>Surgery, treatment or procedure. We handle hospital, travel & housing.</div>
+        </button>
+        <button onClick={()=>setPath("care")}
+          style={{background:"rgba(10,107,62,0.07)",border:"1.5px solid rgba(10,107,62,0.15)",borderRadius:14,padding:"16px 14px",textAlign:"left",cursor:"pointer"}}>
+          <div style={{fontSize:28,marginBottom:8}}>🏥</div>
+          <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:14,color:"var(--txt)",marginBottom:4}}>Already in Cairo</div>
+          <div style={{fontSize:10,color:"var(--sub)",lineHeight:1.5}}>Find a clinic, doctor, lab or pharmacy near you.</div>
+        </button>
       </div>
 
-      {/* Two main paths */}
-      <div style={{padding:"16px 17px 0"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:18}}>
-          <button onClick={()=>setMode("browse")}
-            style={{background:"white",border:"1.5px solid var(--bdr)",borderRadius:16,padding:"18px 14px",textAlign:"left",cursor:"pointer",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
-            <div style={{fontSize:28,marginBottom:8}}>🔍</div>
-            <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:14,color:"var(--txt)",marginBottom:4}}>Browse Providers</div>
-            <div style={{fontSize:10,color:"var(--sub)",lineHeight:1.45}}>See all verified clinics, doctors and labs</div>
-            <div style={{fontSize:10,fontWeight:700,color:"#C0392B",marginTop:8}}>View all →</div>
-          </button>
-          <button onClick={()=>{setMode("triage");setTriageStep(1);setTriageType(null);setTriageUrgency(null);}}
-            style={{background:"var(--gd)",border:"none",borderRadius:16,padding:"18px 14px",textAlign:"left",cursor:"pointer",boxShadow:"0 4px 16px rgba(3,49,26,0.3)"}}>
-            <div style={{fontSize:28,marginBottom:8}}>🤖</div>
-            <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:14,color:"white",marginBottom:4}}>Health Assistant</div>
-            <div style={{fontSize:10,color:"rgba(254,252,247,0.6)",lineHeight:1.45}}>Answer 4 quick questions, we find your match</div>
-            <div style={{fontSize:10,fontWeight:700,color:"#4DD994",marginTop:8}}>Start now →</div>
-          </button>
-        </div>
-
-        {/* Service type grid */}
-        <div style={{fontSize:11,fontWeight:800,color:"var(--sub)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Browse by Type</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:20}}>
-          {HEALTH_TYPES.slice(1).map(t=>(
-            <button key={t.id} onClick={()=>{setTypeFilter(t.id);setMode("browse");}}
-              style={{background:"white",border:"1.5px solid var(--bdr)",borderRadius:12,padding:"14px 8px",textAlign:"center",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:5,transition:"all 0.2s"}}>
-              <div style={{width:36,height:36,borderRadius:10,background:t.color+"15",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{t.emoji}</div>
-              <span style={{fontSize:10,fontWeight:700,color:"var(--txt)"}}>{t.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Trust indicators */}
-        <div style={{background:"var(--sand)",borderRadius:14,padding:"14px 16px",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:800,color:"var(--sub)",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Why Xairod Health?</div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {[
-              ["🔒","Your contact info is private","Businesses only see you after you confirm"],
-              ["✓","All providers are verified","We check every clinic before listing"],
-              ["💬","Fully in-app booking","Secure payment held in escrow until complete"],
-              ["🌍","English & Arabic support","We match you to providers that speak your language"],
-            ].map(([ico,title,sub])=>(
-              <div key={title} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                <div style={{width:28,height:28,borderRadius:8,background:"var(--g)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{ico}</div>
-                <div><div style={{fontSize:12,fontWeight:700,color:"var(--txt)"}}>{title}</div><div style={{fontSize:10,color:"var(--sub)",marginTop:1}}>{sub}</div></div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Emergency warning */}
-        <div style={{background:"rgba(192,57,43,0.06)",border:"1.5px solid rgba(192,57,43,0.2)",borderRadius:12,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
-          <span style={{fontSize:18,flexShrink:0}}>🚨</span>
+      {/* Why Egypt */}
+      <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:15,marginBottom:10}}>Why Egypt for Treatment?</div>
+      {[
+        ["💰","60–80% cheaper","than private treatment in Nigeria or Ghana"],
+        ["🏥","JCI-accredited hospitals","with English-speaking specialists"],
+        ["✈️","Direct flights","from Lagos, Accra, Addis, Nairobi"],
+        ["🌍","African patient community","already using Cairo hospitals"],
+      ].map(([icon,bold,sub])=>(
+        <div key={bold} style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:10,padding:"10px 12px",background:"var(--card)",borderRadius:10,border:"1px solid var(--bdr)"}}>
+          <span style={{fontSize:20,flexShrink:0}}>{icon}</span>
           <div>
-            <div style={{fontSize:12,fontWeight:700,color:"#C0392B",marginBottom:2}}>Medical Emergency?</div>
-            <div style={{fontSize:11,color:"var(--sub)",lineHeight:1.55}}>Call <strong style={{color:"var(--txt)"}}>123</strong> (Egypt emergency) or go directly to your nearest hospital. Xairod is for non-emergency connections only.</div>
+            <div style={{fontSize:12,fontWeight:700,color:"var(--txt)"}}>{bold}</div>
+            <div style={{fontSize:11,color:"var(--sub)"}}>{sub}</div>
           </div>
         </div>
-      </div>
+      ))}
     </div>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // BROWSE SCREEN (Frame 1)
-  // ══════════════════════════════════════════════════════════════════════════
-  if(mode==="browse")return(
-    <div style={{paddingBottom:24}}>
-      {/* Header */}
-      <div style={{background:"var(--gd)",padding:"16px 17px 14px",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-          <button onClick={()=>setMode("home")} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"white",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
-          <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:16,color:"white",flex:1}}>Health Providers</div>
-          <span style={{fontSize:11,color:"rgba(254,252,247,0.5)"}}>{filtered.length} found</span>
-        </div>
-        {/* Search */}
-        <div style={{background:"rgba(255,255,255,0.1)",borderRadius:10,padding:"9px 13px",display:"flex",alignItems:"center",gap:8,border:"1px solid rgba(255,255,255,0.1)",marginBottom:10}}>
-          <span style={{fontSize:13}}>🔍</span>
-          <input value={search} onChange={e=>setSearch(e.target.value)}
-            placeholder="Search providers…"
-            style={{background:"none",border:"none",outline:"none",fontSize:12,color:"rgba(254,252,247,0.9)",fontFamily:"'Outfit',sans-serif",flex:1}}/>
-          {search&&<button onClick={()=>setSearch("")} style={{background:"none",border:"none",color:"rgba(254,252,247,0.5)",cursor:"pointer",fontSize:14}}>×</button>}
-        </div>
-        {/* Type chips */}
-        <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
-          {HEALTH_TYPES.map(t=>(
-            <button key={t.id} onClick={()=>setTypeFilter(t.id)}
-              style={{padding:"5px 12px",borderRadius:20,border:"1.5px solid",borderColor:typeFilter===t.id?"white":"rgba(255,255,255,0.2)",background:typeFilter===t.id?"white":"transparent",color:typeFilter===t.id?"var(--gd)":"rgba(254,252,247,0.8)",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap",flexShrink:0,transition:"all 0.15s"}}>
-              {t.emoji} {t.label}
-            </button>
-          ))}
-        </div>
+  // ── MEDICAL TOURISM PATH ──────────────────────────────────────────────────
+  if(path==="tourism") return(
+    <div style={{padding:"0 17px 80px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 0 16px"}}>
+        <button onClick={()=>setPath("home")} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"var(--sub)"}}>←</button>
+        <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:19}}>Medical Tourism</div>
       </div>
 
-      <div style={{padding:"16px 17px 0"}}>
-        {filtered.length===0?(
-          <div style={{textAlign:"center",padding:"48px 0"}}>
-            <div style={{fontSize:48,marginBottom:14}}>🏥</div>
-            <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:18,marginBottom:6}}>No providers yet</div>
-            <div style={{fontSize:13,color:"var(--sub)",marginBottom:20,lineHeight:1.6}}>Your ops manager can add verified health providers through the admin panel. Check back soon.</div>
-            <button onClick={()=>{setMode("triage");setTriageStep(1);setTriageType(null);setTriageUrgency(null);}}
-              style={{padding:"12px 24px",borderRadius:20,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-              Try Health Assistant instead →
-            </button>
+      {/* Step indicator */}
+      <div style={{display:"flex",gap:0,marginBottom:20,background:"var(--sand)",borderRadius:10,padding:4}}>
+        {["Procedure","Details","Hospitals"].map((s,i)=>(
+          <div key={s} onClick={()=>intakeStep>i+1&&setIntakeStep(i+1)}
+            style={{flex:1,textAlign:"center",padding:"7px 0",borderRadius:8,background:intakeStep===i+1?"var(--g)":"transparent",color:intakeStep===i+1?"white":intakeStep>i+1?"var(--g)":"var(--sub)",fontSize:11,fontWeight:700,cursor:intakeStep>i+1?"pointer":"default",transition:"all 0.2s"}}>
+            {intakeStep>i+1?"✓ ":""}{s}
           </div>
-        ):filtered.map((item,i)=>(
-          <ProviderCard key={item.id} item={item} rank={i} onConnect={setConnectListing}/>
         ))}
       </div>
+
+      {/* Step 1 — Choose procedure */}
+      {intakeStep===1&&(
+        <>
+          <div style={{fontSize:13,fontWeight:600,color:"var(--sub)",marginBottom:14}}>What procedure or treatment are you seeking?</div>
+          {PROCEDURES.map(p=>(
+            <button key={p.id} onClick={()=>{setProcedure(p.id);setIntakeStep(2);}}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,border:"1.5px solid",borderColor:procedure===p.id?"var(--g)":"var(--bdr)",background:procedure===p.id?"rgba(10,107,62,0.07)":"var(--card)",marginBottom:8,cursor:"pointer",textAlign:"left"}}>
+              <span style={{fontSize:22,flexShrink:0}}>{p.icon}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--txt)"}}>{p.label}</div>
+                <div style={{fontSize:10,color:"var(--sub)"}}>{p.sub}</div>
+              </div>
+              <div style={{fontSize:10,fontWeight:700,color:"var(--g)",flexShrink:0}}>{p.price}</div>
+            </button>
+          ))}
+        </>
+      )}
+
+      {/* Step 2 — Details */}
+      {intakeStep===2&&!submitted&&(
+        <>
+          <div style={{fontSize:13,fontWeight:600,color:"var(--sub)",marginBottom:14}}>
+            Tell us about yourself and your plans
+          </div>
+
+          {/* Selected procedure badge */}
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",background:"rgba(10,107,62,0.08)",borderRadius:10,marginBottom:16,border:"1px solid rgba(10,107,62,0.15)"}}>
+            <span style={{fontSize:18}}>{PROCEDURES.find(p=>p.id===procedure)?.icon}</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:700,color:"var(--g)"}}>{PROCEDURES.find(p=>p.id===procedure)?.label}</div>
+              <div style={{fontSize:10,color:"var(--sub)"}}>{PROCEDURES.find(p=>p.id===procedure)?.price}</div>
+            </div>
+            <button onClick={()=>setIntakeStep(1)} style={{background:"none",border:"none",color:"var(--sub)",fontSize:11,cursor:"pointer",fontWeight:700}}>Change</button>
+          </div>
+
+          {[
+            {label:"Your Country *",value:country,set:setCountry,placeholder:"e.g. Nigeria, Ghana, Ethiopia",type:"text"},
+            {label:"Preferred Travel Date",value:travelDate,set:setTravelDate,placeholder:"e.g. October 2026 or flexible",type:"text"},
+            {label:"Budget Range (USD)",value:budget,set:setBudget,placeholder:"e.g. $2,000–$5,000",type:"text"},
+          ].map(f=>(
+            <div key={f.label} style={{marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--sub)",textTransform:"uppercase",letterSpacing:0.7,marginBottom:5}}>{f.label}</div>
+              <input type={f.type} value={f.value} onChange={e=>f.set(e.target.value)} placeholder={f.placeholder}
+                style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"var(--txt)",outline:"none"}}/>
+            </div>
+          ))}
+
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--sub)",textTransform:"uppercase",letterSpacing:0.7,marginBottom:5}}>Medical Notes / History</div>
+            <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3}
+              placeholder="Any existing conditions, previous treatments, medications, or specific requirements…"
+              style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"var(--txt)",outline:"none",resize:"none"}}/>
+          </div>
+
+          {/* What Xairod provides */}
+          <div style={{background:"var(--sand)",borderRadius:12,padding:"12px 14px",marginBottom:16,border:"1px solid var(--bdr)"}}>
+            <div style={{fontSize:11,fontWeight:800,color:"var(--txt)",marginBottom:8}}>What you get with Xairod Medical</div>
+            {["🏥 Hospital matched to your procedure and budget","👤 Dedicated case manager assigned within 24h","✈️ Flight booking assistance","🏠 Recovery accommodation near your hospital","🚗 Airport and hospital transfers","📋 Medical visa support","📞 On-ground support during your stay"].map(item=>(
+              <div key={item} style={{fontSize:11,color:"var(--sub)",marginBottom:4}}>{item}</div>
+            ))}
+          </div>
+
+          {!user&&<div style={{fontSize:11,color:"#C0392B",marginBottom:10,padding:"8px 12px",background:"rgba(192,57,43,0.07)",borderRadius:8}}>⚠️ Sign in to submit your enquiry</div>}
+
+          <button onClick={country?submitIntake:null} disabled={!country||submitting||!user}
+            style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:country&&user?"var(--g)":"var(--bdr)",color:country&&user?"white":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:15,cursor:country&&user?"pointer":"default",transition:"all 0.2s"}}>
+            {submitting?"Submitting your enquiry…":"Request Case Manager →"}
+          </button>
+          <div style={{fontSize:10,color:"var(--sub)",textAlign:"center",marginTop:8}}>Free · No commitment · Response within 24 hours</div>
+        </>
+      )}
+
+      {/* Submitted confirmation */}
+      {submitted&&(
+        <div style={{textAlign:"center",padding:"20px 0"}}>
+          <div style={{fontSize:56,marginBottom:14}}>✅</div>
+          <div style={{fontFamily:"'Fraunces',serif",fontWeight:900,fontSize:22,marginBottom:8}}>Enquiry Received</div>
+          <div style={{fontSize:12,color:"var(--sub)",lineHeight:1.8,marginBottom:20}}>
+            A Xairod Case Manager will contact you within 24 hours to discuss your treatment options and build your personalised package.
+          </div>
+          <div style={{background:"var(--sand)",borderRadius:14,padding:"16px",marginBottom:20}}>
+            <div style={{fontSize:10,color:"var(--sub)",marginBottom:4}}>Your Reference</div>
+            <div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:900,color:"var(--g)",letterSpacing:1}}>{caseRef}</div>
+            <div style={{fontSize:10,color:"var(--sub)",marginTop:4}}>Check notifications for updates</div>
+          </div>
+          {[["📞","Case manager calls you","Within 24 hours"],["🏥","Hospital options presented","With prices"],["📦","Full package quoted","Hospital + travel + housing"],["✈️","You confirm and pay","When ready"]].map(([icon,label,time])=>(
+            <div key={label} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"8px 10px",background:"var(--card)",borderRadius:8,border:"1px solid var(--bdr)",textAlign:"left"}}>
+              <span style={{fontSize:16,flexShrink:0}}>{icon}</span>
+              <div style={{flex:1,fontSize:12,fontWeight:600}}>{label}</div>
+              <div style={{fontSize:10,color:"var(--sub)"}}>{time}</div>
+            </div>
+          ))}
+          <button onClick={()=>{setPath("hospitals");setIntakeStep(3);}}
+            style={{width:"100%",marginTop:12,padding:"13px",borderRadius:12,border:"1.5px solid var(--g)",background:"transparent",color:"var(--g)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer"}}>
+            Browse Hospitals While You Wait →
+          </button>
+        </div>
+      )}
+
+      {/* Step 3 — Hospital matches */}
+      {intakeStep===3&&(
+        <>
+          <div style={{fontSize:13,fontWeight:600,color:"var(--sub)",marginBottom:14}}>
+            {procedure?`Top hospitals for ${PROCEDURES.find(p=>p.id===procedure)?.label}`:"Verified Cairo hospitals"}
+          </div>
+          {matchedHospitals.map(h=>(
+            <div key={h.id} style={{background:"var(--card)",border:"1.5px solid var(--bdr)",borderRadius:14,padding:"14px",marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                    <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:15,color:"var(--txt)"}}>{h.name}</div>
+                    {h.accredited&&<span style={{fontSize:9,background:"rgba(10,107,62,0.1)",color:"var(--g)",padding:"2px 6px",borderRadius:4,fontWeight:800}}>✓ Accredited</span>}
+                  </div>
+                  <div style={{fontSize:11,color:"var(--sub)"}}>📍 {h.city} · {h.en?"English-speaking":"Arabic"}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:14,fontWeight:800,color:"var(--txt)"}}>⭐ {h.rating}</div>
+                  <div style={{fontSize:10,color:"var(--sub)"}}>{h.rc} reviews</div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                {h.specialities.slice(0,4).map(s=>(
+                  <span key={s} style={{fontSize:9,padding:"3px 8px",borderRadius:20,background:"var(--sand)",color:"var(--sub)",fontWeight:600,textTransform:"capitalize"}}>{s}</span>
+                ))}
+              </div>
+              <button onClick={()=>{setConnectListing({id:h.id,name:h.name,cat:"health",icon:"🏥",city:h.city,desc:`Verified Cairo hospital. Specialities: ${h.specialities.join(", ")}. English-speaking staff. Xairod-accredited.`,_isMedical:true});}}
+                style={{width:"100%",padding:"10px",borderRadius:10,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer"}}>
+                Request Package with {h.name.split(" ")[0]} →
+              </button>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // TRIAGE CONCIERGE (Frame 2) — 4 Steps
-  // ══════════════════════════════════════════════════════════════════════════
-  if(mode==="triage"){
-    const TOTAL=4;
-
-    return(
-      <div style={{paddingBottom:24}}>
-        {/* Sticky header */}
-        <div style={{background:"var(--gd)",padding:"14px 17px",position:"sticky",top:0,zIndex:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-            <button onClick={()=>triageStep===1?setMode("home"):setTriageStep(s=>s-1)}
-              style={{background:"rgba(255,255,255,0.1)",border:"none",color:"white",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
-            <div style={{flex:1}}>
-              <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:15,color:"white"}}>Health Assistant</div>
-              <div style={{fontSize:10,color:"rgba(254,252,247,0.5)"}}>
-                {["What type of help?","How urgent?","Your preferences","Best matches"][triageStep-1]}
-              </div>
-            </div>
-            <div style={{fontSize:10,color:"rgba(254,252,247,0.5)",fontWeight:700}}>Step {triageStep}/{TOTAL}</div>
-          </div>
-          {/* Step dots */}
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            {[1,2,3,4].map((n,i)=>(
-              <React.Fragment key={n}>
-                <StepDot n={n} done={triageStep>n} active={triageStep===n}/>
-                {i<3&&<StepLine done={triageStep>n}/>}
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-
-        <div style={{padding:"18px 17px 0"}}>
-
-          {/* STEP 1 */}
-          {triageStep===1&&(
-            <>
-              <AIBubble text={<>Hi! I'll find the right health support in Cairo for you. This takes about 1 minute.<br/><br/><strong>First, what type of help do you need?</strong></>}/>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {TRIAGE_TYPES.map(t=>(
-                  <button key={t.id} onClick={()=>setTriageType(t.id)}
-                    style={{padding:"13px 14px",borderRadius:13,border:"1.5px solid",borderColor:triageType===t.id?"var(--g)":"var(--bdr)",background:triageType===t.id?"var(--gl,#E8F5EE)":"white",color:"var(--txt)",fontSize:13,cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left",display:"flex",alignItems:"center",gap:12,transition:"all 0.15s",boxShadow:triageType===t.id?"0 0 0 3px rgba(10,107,62,0.12)":"none"}}>
-                    <div style={{width:38,height:38,borderRadius:10,background:triageType===t.id?"var(--g)":"rgba(10,107,62,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,transition:"background 0.15s"}}>{t.emoji}</div>
-                    <div>
-                      <div style={{fontWeight:triageType===t.id?700:600,color:triageType===t.id?"var(--g)":"var(--txt)"}}>{t.label}</div>
-                      <div style={{fontSize:10,color:"var(--sub)",marginTop:1}}>{t.sub}</div>
-                    </div>
-                    {triageType===t.id&&<div style={{marginLeft:"auto",color:"var(--g)",fontSize:16}}>✓</div>}
-                  </button>
-                ))}
-              </div>
-              <button onClick={()=>triageType&&setTriageStep(2)} disabled={!triageType}
-                style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:triageType?"var(--g)":"var(--sand2)",color:triageType?"white":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:14,cursor:triageType?"pointer":"default",marginTop:14,transition:"background 0.2s"}}>
-                Continue → Step 2
-              </button>
-            </>
-          )}
-
-          {/* STEP 2 */}
-          {triageStep===2&&(
-            <>
-              <AIBubble text={<>Got it — <strong style={{color:"#4DD994"}}>{TRIAGE_TYPES.find(t=>t.id===triageType)?.label}</strong>.<br/><br/>How urgent is this, and can you tell me more about your situation?</>}/>
-              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-                {URGENCY.map(u=>(
-                  <button key={u.id} onClick={()=>setTriageUrgency(u.id)}
-                    style={{padding:"14px",borderRadius:13,border:"1.5px solid",borderColor:triageUrgency===u.id?u.color:"var(--bdr)",background:triageUrgency===u.id?u.bg:"white",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left",display:"flex",alignItems:"center",gap:12,boxShadow:triageUrgency===u.id?"0 0 0 3px "+u.color+"20":"none",transition:"all 0.15s"}}>
-                    <div style={{width:38,height:38,borderRadius:10,background:triageUrgency===u.id?u.color+"20":"rgba(0,0,0,0.04)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{u.emoji}</div>
-                    <div>
-                      <div style={{fontWeight:700,fontSize:13,color:triageUrgency===u.id?u.color:"var(--txt)"}}>{u.label}</div>
-                      <div style={{fontSize:10,color:"var(--sub)",marginTop:1}}>{u.sub}</div>
-                    </div>
-                    {triageUrgency===u.id&&<div style={{marginLeft:"auto",color:u.color,fontSize:16}}>✓</div>}
-                  </button>
-                ))}
-              </div>
-              <div style={{marginBottom:6,fontSize:11,fontWeight:700,color:"var(--sub)"}}>Describe your situation (helps us match better)</div>
-              <textarea value={triageDetails} onChange={e=>setTriageDetails(e.target.value)}
-                placeholder={triageType==="lab"?"e.g. Full blood count, malaria test, vitamin D…":triageType==="mental"?"e.g. Anxiety, stress from studying, need English counsellor…":"e.g. Fever for 3 days, sore throat, need English-speaking doctor…"}
-                rows={3} style={{width:"100%",padding:"11px 13px",borderRadius:12,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:12,resize:"none",outline:"none",color:"var(--txt)",lineHeight:1.6,marginBottom:14}}/>
-              <button onClick={()=>triageUrgency&&setTriageStep(3)} disabled={!triageUrgency}
-                style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:triageUrgency?"var(--g)":"var(--sand2)",color:triageUrgency?"white":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:14,cursor:triageUrgency?"pointer":"default",transition:"background 0.2s"}}>
-                Continue → Step 3
-              </button>
-            </>
-          )}
-
-          {/* STEP 3 */}
-          {triageStep===3&&(
-            <>
-              <AIBubble text={<>Almost done! Just a few quick preferences so I find your perfect match.</>}/>
-
-              <div style={{fontWeight:700,fontSize:12,color:"var(--txt)",marginBottom:8}}>Do you need a home visit?</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-                {[{v:true,ico:"🏠",label:"Home visit",sub:"Provider comes to you"},{v:false,ico:"🏥",label:"I'll go in person",sub:"Visit the clinic"}].map(opt=>(
-                  <button key={String(opt.v)} onClick={()=>setTriageHomeVisit(opt.v)}
-                    style={{padding:"12px",borderRadius:12,border:"1.5px solid",borderColor:triageHomeVisit===opt.v?"var(--g)":"var(--bdr)",background:triageHomeVisit===opt.v?"var(--gl,#E8F5EE)":"white",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center",transition:"all 0.15s"}}>
-                    <div style={{fontSize:22,marginBottom:4}}>{opt.ico}</div>
-                    <div style={{fontSize:11,fontWeight:700,color:triageHomeVisit===opt.v?"var(--g)":"var(--txt)"}}>{opt.label}</div>
-                    <div style={{fontSize:9,color:"var(--sub)",marginTop:2}}>{opt.sub}</div>
-                  </button>
-                ))}
-              </div>
-
-              <div style={{fontWeight:700,fontSize:12,color:"var(--txt)",marginBottom:8}}>Language preference</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
-                {[{v:"english",flag:"🇬🇧",label:"English"},{v:"arabic",flag:"🇸🇦",label:"Arabic"},{v:"both",flag:"🌍",label:"Either"}].map(opt=>(
-                  <button key={opt.v} onClick={()=>setTriageLang(opt.v)}
-                    style={{padding:"10px 6px",borderRadius:12,border:"1.5px solid",borderColor:triageLang===opt.v?"var(--g)":"var(--bdr)",background:triageLang===opt.v?"var(--gl,#E8F5EE)":"white",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center",transition:"all 0.15s"}}>
-                    <div style={{fontSize:18,marginBottom:3}}>{opt.flag}</div>
-                    <div style={{fontSize:11,fontWeight:700,color:triageLang===opt.v?"var(--g)":"var(--txt)"}}>{opt.label}</div>
-                  </button>
-                ))}
-              </div>
-
-              <div style={{fontWeight:700,fontSize:12,color:"var(--txt)",marginBottom:8}}>Budget per visit</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:16}}>
-                {["Any","< 300 EGP","300–800","800+ EGP"].map(b=>(
-                  <button key={b} onClick={()=>setTriageBudget(b===triageBudget?"":b)}
-                    style={{padding:"9px 4px",borderRadius:10,border:"1.5px solid",borderColor:triageBudget===b?"#C8861A":"var(--bdr)",background:triageBudget===b?"rgba(200,134,26,0.08)":"white",color:triageBudget===b?"#C8861A":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}>
-                    {b}
-                  </button>
-                ))}
-              </div>
-
-              <button onClick={()=>{
-                const matches=healthListings.length>0?
-                  healthListings.filter(l=>{
-                    if(triageType==="all"||triageType==="other")return true;
-                    const txt=(l.name+l.description+l.cat+l.category).toLowerCase();
-                    return txt.includes(triageType)||l.cat==="health"||l.category==="health";
-                  }).slice(0,3):[];
-                setTriageMatches(matches.length>0?matches:healthListings.slice(0,3));
-                setTriageStep(4);
-              }}
-                style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                <span>🔍</span> Find My Best Match →
-              </button>
-            </>
-          )}
-
-          {/* STEP 4 — Results */}
-          {triageStep===4&&(
-            <>
-              <AIBubble text={triageMatches.length>0?
-                <>{`I found `}<strong style={{color:"#4DD994"}}>{triageMatches.length} verified provider{triageMatches.length!==1?"s":""}</strong>{` that match your needs. I've sorted them by best fit.`}</>:
-                <>No specific providers matched yet. We're actively adding more partners — use <strong>Browse All</strong> to see what's available.</>}
-              />
-
-              {/* Summary badges */}
-              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
-                {[
-                  TRIAGE_TYPES.find(t=>t.id===triageType)?.emoji+" "+TRIAGE_TYPES.find(t=>t.id===triageType)?.label,
-                  URGENCY.find(u=>u.id===triageUrgency)?.emoji+" "+URGENCY.find(u=>u.id===triageUrgency)?.label,
-                  triageHomeVisit?"🏠 Home visit":"🏥 In person",
-                  triageLang==="english"?"🇬🇧 English":triageLang==="arabic"?"🇸🇦 Arabic":"🌍 Either",
-                  triageBudget?("💰 "+triageBudget):null,
-                ].filter(Boolean).map((pill,i)=>(
-                  <span key={i} style={{background:"var(--sand)",border:"1px solid var(--bdr)",borderRadius:20,padding:"4px 10px",fontSize:10,fontWeight:600,color:"var(--txt)"}}>
-                    {pill}
-                  </span>
-                ))}
-              </div>
-
-              {triageMatches.length===0?(
-                <div style={{textAlign:"center",padding:"32px 0"}}>
-                  <div style={{fontSize:44,marginBottom:12}}>🏥</div>
-                  <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:17,marginBottom:6}}>No providers yet</div>
-                  <div style={{fontSize:12,color:"var(--sub)",marginBottom:16,lineHeight:1.6}}>We're adding verified health partners. Browse all listings or try a different type.</div>
-                  <button onClick={()=>setMode("browse")}
-                    style={{padding:"12px 24px",borderRadius:20,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                    Browse All Providers
-                  </button>
-                </div>
-              ):triageMatches.map((item,i)=>(
-                <ProviderCard key={item.id} item={item} rank={i} onConnect={l=>setConnectListing({
-                  ...l,
-                  _triageContext:{type:triageType,urgency:triageUrgency,details:triageDetails,homeVisit:triageHomeVisit,budget:triageBudget,language:triageLang}
-                })}/>
-              ))}
-
-              {triageMatches.length>0&&(
-                <div style={{background:"var(--sand)",borderRadius:12,padding:"12px 14px",marginTop:4,display:"flex",gap:8,alignItems:"flex-start"}}>
-                  <span style={{fontSize:14,flexShrink:0}}>🔒</span>
-                  <div style={{fontSize:11,color:"var(--sub)",lineHeight:1.55}}>All providers verified by Xairod. Your contact info is only shared with the provider you choose, after you confirm.</div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+  // ── CAIRO CARE PATH (Loyalty Layer) ──────────────────────────────────────
+  if(path==="care"||path==="clinics") return(
+    <div style={{padding:"0 17px 80px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 0 16px"}}>
+        <button onClick={()=>setPath("home")} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"var(--sub)"}}>←</button>
+        <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:19}}>Health in Cairo</div>
       </div>
-    );
-  }
+
+      {/* Search */}
+      <div style={{position:"relative",marginBottom:14}}>
+        <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:14,opacity:0.5}}>🔍</span>
+        <input value={careSearch} onChange={e=>setCareSearch(e.target.value)}
+          placeholder="Search clinics, doctors, labs…"
+          style={{width:"100%",padding:"10px 12px 10px 36px",borderRadius:12,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"var(--txt)",outline:"none"}}/>
+      </div>
+
+      {/* Filter chips */}
+      <div style={{display:"flex",gap:7,overflowX:"auto",marginBottom:16,paddingBottom:4}}>
+        {CARE_TYPES.map(ct=>(
+          <button key={ct.id} onClick={()=>setCareFilter(ct.id)}
+            style={{padding:"6px 14px",borderRadius:20,border:"1.5px solid",borderColor:careFilter===ct.id?ct.color:"var(--bdr)",background:careFilter===ct.id?ct.color+"15":"var(--card)",color:careFilter===ct.id?ct.color:"var(--sub)",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap",flexShrink:0,display:"flex",alignItems:"center",gap:5}}>
+            {ct.emoji} {ct.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Urgent banner */}
+      <div style={{background:"rgba(192,57,43,0.07)",border:"1.5px solid rgba(192,57,43,0.2)",borderRadius:12,padding:"12px 14px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div>
+          <div style={{fontSize:12,fontWeight:800,color:"#C0392B"}}>🚨 Emergency or urgent care?</div>
+          <div style={{fontSize:10,color:"var(--sub)",marginTop:2}}>Dar Al Fouad · Al-Salam · Saudi German — all 24hrs</div>
+        </div>
+        <a href="tel:123" style={{background:"#C0392B",color:"white",padding:"7px 14px",borderRadius:8,fontWeight:800,fontSize:11,textDecoration:"none",flexShrink:0}}>Call 123</a>
+      </div>
+
+      {/* Listings */}
+      {careListings.length===0?(
+        <div style={{textAlign:"center",padding:"40px 0",color:"var(--sub)"}}>
+          <div style={{fontSize:40,marginBottom:10}}>🏥</div>
+          <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:800,marginBottom:6}}>No results</div>
+          <div style={{fontSize:12}}>Try a different filter or search term</div>
+        </div>
+      ):careListings.map(item=>(
+        <div key={item.id} style={{background:"var(--card)",border:"1.5px solid var(--bdr)",borderRadius:14,padding:"14px",marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:14,color:"var(--txt)"}}>{item.name}</div>
+                {item.verified&&<span style={{fontSize:9,background:"rgba(10,107,62,0.1)",color:"var(--g)",padding:"2px 6px",borderRadius:4,fontWeight:800}}>✓</span>}
+              </div>
+              <div style={{fontSize:11,color:"var(--sub)"}}>📍 {item.city} · {item.hours}</div>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              {item.rating>0&&<div style={{fontSize:12,fontWeight:800,color:"var(--txt)"}}>⭐ {item.rating}</div>}
+              <div style={{fontSize:10,color:"var(--sub)"}}>{item.price}</div>
+            </div>
+          </div>
+          <div style={{fontSize:11,color:"var(--sub)",lineHeight:1.5,marginBottom:10}}>{item.desc}</div>
+          <button onClick={()=>setConnectListing(item)}
+            style={{width:"100%",padding:"10px",borderRadius:10,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer"}}>
+            📋 Book / Request →
+          </button>
+        </div>
+      ))}
+    </div>
+  );
 
   return null;
 }
+
 
 function StudyRoom({user,lang}){
   const[rooms,setRooms]=useState([]);
@@ -1961,6 +1846,15 @@ function ConnectModal({listing, user, lang, onClose}){
       supabase.from("service_requests").select("*,quotes(*)")
         .eq("user_id",user.id).order("created_at",{ascending:false})
         .then(({data})=>{if(data)setMyRequests(data);});
+
+      // Notify user — confirm their request was received
+      (async()=>{try{await supabase.from("notifications").insert({
+        user_id:user.id,
+        icon:cfg.icon,
+        message:`Your request to ${listing?.name} was sent successfully. Reference: ${ref}. You'll be notified when they respond.`,
+        type:"request_sent",
+        metadata:{request_ref:ref,listing_name:listing?.name}
+      });}catch{}})();
 
       setReqRef(ref);
       setStep("sent");
@@ -3259,7 +3153,8 @@ function EditProfileModal({user, onClose, onSave}){
         setAvatarPreview(URL.createObjectURL(compressed));
       }else{
         const{data:urlData}=supabase.storage.from("avatars").getPublicUrl(fileName);
-        setAvatarPreview(urlData.publicUrl);
+        const publicUrl=urlData?.publicUrl;
+        if(publicUrl){setAvatarPreview(publicUrl);}
       }
       setUploading(false);
     }catch(err){
@@ -3580,9 +3475,25 @@ function MainApp({user,onLogout}){
       .then(({data})=>{ if(data&&data.length>0) setListings(data.map(l=>({...l,cat:l.category,rc:l.review_count||0,top:l.top||false,african:l.african_owned||false,icon:l.icon||"🏢",price:l.price||"$$",verified:l.verified||false,images:l.images||[]}))); });
 
     if(user?.id){
-      supabase.from("service_requests").select("*,quotes(*)").eq("user_id",user.id)
-        .order("created_at",{ascending:false})
-        .then(({data})=>{if(data)setMyRequests(data);});
+      // Load requests first, then enrich with quotes separately
+      const loadRequests=async()=>{
+        const{data:reqs}=await supabase.from("service_requests")
+          .select("*").eq("user_id",user.id).order("created_at",{ascending:false});
+        if(!reqs) return;
+        // Get quotes for each request
+        const reqIds=reqs.map(r=>r.id);
+        let quotesMap={};
+        if(reqIds.length>0){
+          const{data:quotes}=await supabase.from("quotes")
+            .select("*").in("request_id",reqIds);
+          (quotes||[]).forEach(q=>{
+            if(!quotesMap[q.request_id]) quotesMap[q.request_id]=[];
+            quotesMap[q.request_id].push(q);
+          });
+        }
+        setMyRequests(reqs.map(r=>({...r,quotes:quotesMap[r.id]||[]})));
+      };
+      loadRequests();
     }
 
     supabase.from("universities").select("*").order("name",{ascending:true})
@@ -4276,7 +4187,14 @@ function MainApp({user,onLogout}){
         {tab==="study"&&<StudyRoom user={user} lang={lang}/>}
         {tab==="health"&&<HealthScreen user={user} lang={lang} listings={listings} setConnectListing={setConnectListing}/>}
         {tab==="requests"&&<MyRequestsScreen user={user} lang={lang} requests={myRequests} onRefresh={()=>{
-          supabase.from("service_requests").select("*,quotes(*)").eq("user_id",user?.id).order("created_at",{ascending:false}).then(({data})=>{if(data)setMyRequests(data);});
+          (async()=>{
+          const{data:reqs}=await supabase.from("service_requests").select("*").eq("user_id",user?.id).order("created_at",{ascending:false});
+          if(!reqs) return;
+          const ids=reqs.map(r=>r.id);
+          let qmap={};
+          if(ids.length>0){const{data:qs}=await supabase.from("quotes").select("*").in("request_id",ids);(qs||[]).forEach(q=>{if(!qmap[q.request_id])qmap[q.request_id]=[];qmap[q.request_id].push(q);});}
+          setMyRequests(reqs.map(r=>({...r,quotes:qmap[r.id]||[]})));
+        })();
         }}/>}
 
         {/* ── MODALS ── */}
