@@ -763,7 +763,7 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
             )}
 
             {/* Quote received */}
-            {pendingQuote&&req.status==="quoted"&&(
+            {pendingQuote&&(pendingQuote.status==="pending"||req.status==="quoted")&&(
               <div style={{background:"rgba(200,134,26,0.08)",border:"1.5px solid rgba(200,134,26,0.2)",borderRadius:12,padding:"13px 14px"}}>
                 <div style={{fontSize:10,fontWeight:800,color:"#C8861A",marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>💬 Quote Received</div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
@@ -3545,7 +3545,7 @@ function MainApp({user,onLogout}){
     {id:"explore",label:t.explore,   icon:NAV[1].icon},
     {id:"tips",   label:t.tips,      icon:NAV[2].icon},
     {id:"community",label:t.community,icon:NAV[3].icon},
-    {id:"groups", label:t.groups,    icon:NAV[4].icon},
+    {id:"groups", label:"Chat",      icon:"💬"},
     // Plans tab removed — no subscriptions in commission model
     {id:"profile",label:t.profile,   icon:NAV[6].icon},
   ];
