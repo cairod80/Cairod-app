@@ -543,6 +543,292 @@ const LANGUAGES={
 // HEALTH SCREEN — Frame 1: Directory + Book + Frame 2: Triage Concierge
 // ════════════════════════════════════════════════════════════════════════════
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// DIRECT MESSAGES — Booking-based chat rooms, routed through platform
+// ════════════════════════════════════════════════════════════════════════════
+
+// Content filter — blocks phone numbers, emails, off-platform payment methods
+function filterContent(text){
+  const patterns=[
+    {re:/(\+?\d[\d\s\-\(\)]{7,}\d)/g,         reason:"phone number"},
+    {re:/[\w.\-]+@[\w.\-]+\.\w+/g,             reason:"email address"},
+    {re:/whatsapp|wa\.me|telegram|signal/gi,    reason:"external messaging app"},
+    {re:/zelle|venmo|cashapp|western.?union/gi, reason:"external payment"},
+    {re:/pay.{0,10}(cash|outside|direct)/gi,   reason:"off-platform payment"},
+  ];
+  for(const p of patterns){
+    if(p.re.test(text)) return {blocked:true,reason:"Message contains "+p.reason+" which is not allowed. All communication and payments must stay on Xairod."};
+  }
+  return {blocked:false};
+}
+
+function DirectRoomScreen({room,user,onBack}){
+  const[messages,setMessages]=useState([]);
+  const[input,setInput]=useState("");
+  const[sending,setSending]=useState(false);
+  const[filterWarning,setFilterWarning]=useState("");
+  const[showPayCard,setShowPayCard]=useState(false);
+  const bottomRef=useRef(null);
+  const isCustomer=room.customer_id===user?.id;
+  const myRole=isCustomer?"customer":"business";
+
+  useEffect(()=>{
+    // Load messages
+    supabase.from("direct_messages").select("*")
+      .eq("room_id",room.id).order("created_at",{ascending:true})
+      .then(({data})=>{
+        if(data) setMessages(data);
+        // Mark as read
+        supabase.from("direct_messages")
+          .update(isCustomer?{read_by_customer:true}:{read_by_business:true})
+          .eq("room_id",room.id).neq("sender_role",myRole);
+      });
+    // Realtime
+    const ch=supabase.channel("dm_"+room.id)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"direct_messages",filter:`room_id=eq.${room.id}`},
+        payload=>{
+          setMessages(prev=>[...prev,payload.new]);
+          setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),100);
+        })
+      .subscribe();
+    return()=>supabase.removeChannel(ch);
+  },[room.id]);
+
+  useEffect(()=>{
+    setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),200);
+  },[messages.length]);
+
+  const send=async()=>{
+    const text=input.trim();
+    if(!text||sending) return;
+    // Content filter
+    const check=filterContent(text);
+    if(check.blocked){setFilterWarning(check.reason);setTimeout(()=>setFilterWarning(""),5000);return;}
+    setSending(true);setFilterWarning("");
+    const{data:msg}=await supabase.from("direct_messages").insert({
+      room_id:room.id,
+      sender_id:user.id,
+      sender_role:myRole,
+      content:text,
+      type:"text",
+      read_by_customer:isCustomer,
+      read_by_business:!isCustomer,
+    }).select().single();
+    if(msg) setMessages(prev=>[...prev,msg]);
+    // Notify other party
+    const notifyId=isCustomer?room.business_user_id:room.customer_id;
+    if(notifyId){
+      await supabase.from("notifications").insert({
+        user_id:notifyId,icon:"💬",
+        message:`New message from ${user.name||"the other party"} about ${room.listing_name||"your request"}.`,
+        type:"direct_message",metadata:{room_id:room.id}
+      });
+    }
+    setInput("");setSending(false);
+    setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),100);
+  };
+
+  const sendPaymentCard=async(amount)=>{
+    if(!amount||isNaN(amount)) return;
+    setSending(true);
+    const{data:msg}=await supabase.from("direct_messages").insert({
+      room_id:room.id,sender_id:user.id,sender_role:myRole,
+      content:`Payment request: ${parseFloat(amount).toLocaleString()} NGN`,
+      type:"payment_card",
+      metadata:{amount:parseFloat(amount),currency:"NGN",room_id:room.id},
+      read_by_customer:isCustomer,read_by_business:!isCustomer,
+    }).select().single();
+    if(msg) setMessages(prev=>[...prev,msg]);
+    setShowPayCard(false);setSending(false);
+    setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),100);
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100dvh",background:"var(--bg)"}}>
+      {/* Header */}
+      <div style={{background:"var(--g)",padding:"12px 17px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+        <button onClick={onBack} style={{background:"none",border:"none",color:"white",fontSize:22,cursor:"pointer",padding:0,lineHeight:1}}>←</button>
+        <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+          {isCustomer?"🏢":"👤"}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"'Fraunces',serif",fontWeight:800,fontSize:14,color:"white",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {room.listing_name||"Booking Chat"}
+          </div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.55)"}}>
+            {room.request_ref||"Ref: "+room.request_id?.slice(0,8)} · Protected by Xairod
+          </div>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",padding:"14px 17px"}}>
+        {/* Platform notice */}
+        <div style={{textAlign:"center",marginBottom:16,padding:"8px 12px",background:"rgba(10,107,62,0.07)",borderRadius:10,border:"1px solid rgba(10,107,62,0.12)"}}>
+          <div style={{fontSize:10,color:"var(--sub)",lineHeight:1.5}}>
+            🔒 This conversation is through Xairod. Do not share phone numbers or external payment methods. All transactions must be completed in-app.
+          </div>
+        </div>
+
+        {messages.length===0&&(
+          <div style={{textAlign:"center",padding:"30px 0",color:"var(--sub)",fontSize:12}}>No messages yet. Start the conversation.</div>
+        )}
+
+        {messages.map((msg,i)=>{
+          const isMe=msg.sender_id===user?.id;
+
+          // Quote card
+          if(msg.type==="quote_card"){
+            const m=msg.metadata||{};
+            return(
+              <div key={msg.id||i} style={{marginBottom:14}}>
+                <div style={{background:"rgba(200,134,26,0.07)",border:"1.5px solid rgba(200,134,26,0.25)",borderRadius:14,padding:"14px 16px",maxWidth:"88%",margin:"0 auto"}}>
+                  <div style={{fontSize:10,fontWeight:800,color:"#C8861A",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>💼 Quote Received</div>
+                  <div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:900,color:"var(--txt)",marginBottom:4}}>
+                    {parseFloat(m.price||0).toLocaleString()} {m.currency||"NGN"}
+                  </div>
+                  {m.timeline&&<div style={{fontSize:11,color:"var(--sub)",marginBottom:4}}>⏱ {m.timeline}</div>}
+                  {m.notes&&<div style={{fontSize:12,color:"var(--txt)",padding:"8px 10px",background:"var(--sand)",borderRadius:8,marginBottom:10,lineHeight:1.5}}>{m.notes}</div>}
+                  {isCustomer&&(
+                    <button onClick={()=>{/* handled in My Requests */}}
+                      style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer"}}>
+                      ✅ Go to My Requests to Accept & Pay →
+                    </button>
+                  )}
+                  <div style={{fontSize:9,color:"var(--sub)",marginTop:8,textAlign:"center"}}>
+                    {new Date(msg.created_at).toLocaleString("en-GB")}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // Payment card
+          if(msg.type==="payment_card"){
+            const m=msg.metadata||{};
+            return(
+              <div key={msg.id||i} style={{marginBottom:14,display:"flex",justifyContent:isMe?"flex-end":"flex-start"}}>
+                <div style={{background:"rgba(10,107,62,0.08)",border:"1.5px solid rgba(10,107,62,0.2)",borderRadius:14,padding:"14px 16px",maxWidth:"80%"}}>
+                  <div style={{fontSize:10,fontWeight:800,color:"var(--g)",marginBottom:6}}>💳 Payment Request</div>
+                  <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:900,color:"var(--g)",marginBottom:10}}>
+                    {parseFloat(m.amount||0).toLocaleString()} {m.currency||"NGN"}
+                  </div>
+                  {isCustomer&&<div style={{fontSize:10,color:"var(--sub)"}}>Go to My Requests to pay securely.</div>}
+                  <div style={{fontSize:9,color:"var(--sub)",marginTop:6}}>{new Date(msg.created_at).toLocaleString("en-GB")}</div>
+                </div>
+              </div>
+            );
+          }
+
+          // Regular text
+          return(
+            <div key={msg.id||i} style={{marginBottom:10,display:"flex",justifyContent:isMe?"flex-end":"flex-start"}}>
+              <div style={{maxWidth:"78%"}}>
+                {!isMe&&<div style={{fontSize:9,fontWeight:700,color:"var(--g)",marginBottom:2}}>{isCustomer?"Business":"You"}</div>}
+                <div style={{background:isMe?"var(--g)":"var(--card)",color:isMe?"white":"var(--txt)",padding:"9px 13px",borderRadius:isMe?"14px 14px 4px 14px":"14px 14px 14px 4px",fontSize:13,lineHeight:1.5,border:isMe?"none":"1.5px solid var(--bdr)"}}>
+                  {msg.flagged?<span style={{color:"#C0392B",fontStyle:"italic"}}>⚠️ This message was blocked by Xairod</span>:msg.content}
+                </div>
+                <div style={{fontSize:9,color:"var(--sub)",marginTop:2,textAlign:isMe?"right":"left"}}>
+                  {new Date(msg.created_at).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}
+                  {isMe&&" · "}{isMe&&(isCustomer?msg.read_by_business:msg.read_by_customer?"Seen":"Sent")}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Filter warning */}
+      {filterWarning&&(
+        <div style={{margin:"0 17px 8px",padding:"9px 12px",background:"rgba(192,57,43,0.1)",border:"1px solid rgba(192,57,43,0.2)",borderRadius:8,fontSize:11,color:"#C0392B",lineHeight:1.5}}>
+          ⚠️ {filterWarning}
+        </div>
+      )}
+
+      {/* Pay card sender (business only) */}
+      {!isCustomer&&showPayCard&&(
+        <div style={{margin:"0 17px 8px",padding:"12px",background:"var(--card)",border:"1px solid var(--bdr)",borderRadius:12}}>
+          <div style={{fontSize:11,fontWeight:700,marginBottom:8}}>Send Payment Request</div>
+          <div style={{display:"flex",gap:8}}>
+            <input id="pay-amount" type="number" placeholder="Amount in NGN"
+              style={{flex:1,padding:"9px 12px",borderRadius:9,border:"1.5px solid var(--bdr)",background:"var(--sand)",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"var(--txt)",outline:"none"}}/>
+            <button onClick={()=>sendPaymentCard(document.getElementById("pay-amount").value)}
+              style={{padding:"9px 14px",borderRadius:9,border:"none",background:"var(--g)",color:"white",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>Send</button>
+            <button onClick={()=>setShowPayCard(false)} style={{background:"none",border:"none",color:"var(--sub)",cursor:"pointer",fontSize:18}}>×</button>
+          </div>
+        </div>
+      )}
+
+      {/* Input bar */}
+      <div style={{padding:"10px 17px 28px",background:"var(--bg)",borderTop:"1px solid var(--bdr)",flexShrink:0}}>
+        <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+          {!isCustomer&&(
+            <button onClick={()=>setShowPayCard(!showPayCard)}
+              style={{width:40,height:40,borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--card)",cursor:"pointer",fontSize:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              💳
+            </button>
+          )}
+          <textarea value={input} onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
+            placeholder="Type a message…" rows={1}
+            style={{flex:1,padding:"10px 13px",borderRadius:12,border:"1.5px solid var(--bdr)",background:"var(--card)",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"var(--txt)",outline:"none",resize:"none",maxHeight:100}}/>
+          <button onClick={send} disabled={!input.trim()||sending}
+            style={{width:42,height:42,borderRadius:12,border:"none",background:input.trim()?"var(--g)":"var(--bdr)",color:"white",fontSize:18,cursor:input.trim()?"pointer":"default",flexShrink:0,transition:"background 0.2s"}}>→</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DirectMessagesScreen({user,onOpenRoom}){
+  const[rooms,setRooms]=useState([]);
+  const[loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    if(!user?.id) return;
+    supabase.from("chat_rooms")
+      .select("*")
+      .or(`customer_id.eq.${user.id},business_user_id.eq.${user.id}`)
+      .eq("status","active")
+      .order("created_at",{ascending:false})
+      .then(({data})=>{if(data)setRooms(data);setLoading(false);});
+    // Realtime new rooms
+    const ch=supabase.channel("rooms_"+user.id)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_rooms",filter:`customer_id=eq.${user.id}`},
+        payload=>{setRooms(prev=>[payload.new,...prev]);})
+      .subscribe();
+    return()=>supabase.removeChannel(ch);
+  },[user?.id]);
+
+  if(loading) return <div style={{padding:40,textAlign:"center",color:"var(--sub)",fontSize:12}}>Loading messages…</div>;
+
+  if(rooms.length===0) return(
+    <div style={{textAlign:"center",padding:"28px 0"}}>
+      <div style={{fontSize:40,marginBottom:10}}>💬</div>
+      <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:800,color:"var(--sub)",marginBottom:6}}>No messages yet</div>
+      <div style={{fontSize:12,color:"var(--sub)",lineHeight:1.6}}>When a business responds to your request, your chat will appear here.</div>
+    </div>
+  );
+
+  return(
+    <div>
+      {rooms.map(room=>(
+        <div key={room.id} onClick={()=>onOpenRoom(room)}
+          style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:"1px solid var(--bdr)",cursor:"pointer"}}>
+          <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(10,107,62,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🏢</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:13,color:"var(--txt)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{room.listing_name||"Booking Chat"}</div>
+            <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>Tap to open conversation</div>
+          </div>
+          <div style={{color:"var(--sub)",fontSize:18}}>›</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // MY REQUESTS SCREEN — user sees requests, quotes, accepts deals, enters code
 // ════════════════════════════════════════════════════════════════════════════
@@ -3462,7 +3748,8 @@ function MainApp({user,onLogout}){
   const[dark,setDark]=useState(false);
   const[lang,setLang]=useState("en");
   const[groups,setGroups]=useState(GROUPS);
-  const[openGroup,setOpenGroup]=useState(null); // group detail view
+  const[openGroup,setOpenGroup]=useState(null);
+  const[openDMRoom,setOpenDMRoom]=useState(null); // group detail view
   const[listings,setListings]=useState(DATA); // starts with mock, replaced by Supabase
   const[qaList,setQaList]=useState(QA);
   const[universities,setUniversities]=useState(UNIVERSITIES); // starts with mock
@@ -4044,13 +4331,28 @@ function MainApp({user,onLogout}){
         {tab==="admin"&&<AdminPanel/>}
 
         {/* ── GROUPS TAB ── */}
-        {tab==="groups"&&!openGroup&&(
+        {tab==="groups"&&openDMRoom&&(
+          <DirectRoomScreen
+            room={openDMRoom}
+            user={user}
+            onBack={()=>setOpenDMRoom(null)}
+          />
+        )}
+        {tab==="groups"&&!openGroup&&!openDMRoom&&(
           <div className="page-pad">
             <div style={{padding:"17px 17px 11px"}}>
-              <div style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:700,marginBottom:4}}>{t.groupsTitle}</div>
+              <div style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:700,marginBottom:4}}>Chat</div>
+
+              {/* Direct Messages — booking chats */}
+              <div style={{fontFamily:"'Fraunces',serif",fontSize:14,fontWeight:800,marginBottom:10,color:"var(--txt)"}}>📨 Direct Messages</div>
+              <DirectMessagesScreen user={user} onOpenRoom={(room)=>setOpenDMRoom(room)}/>
+
+              <div style={{height:1,background:"var(--bdr)",margin:"20px 0"}}/>
+
+              <div style={{fontFamily:"'Fraunces',serif",fontSize:14,fontWeight:800,marginBottom:10,color:"var(--txt)"}}>👥 Community Groups</div>
               <div style={{fontSize:12,color:"var(--sub)",marginBottom:14}}>Connect with Africans by nationality, city or interest</div>
 
-              {/* My Groups */}
+              {/* Community Groups */}
               {groups.filter(g=>g.joined).length>0&&(
                 <div style={{marginBottom:20}}>
                   <div style={{fontSize:11,fontWeight:800,color:"var(--g)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>✅ {t.myGroups}</div>
