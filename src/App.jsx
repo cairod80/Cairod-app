@@ -902,15 +902,20 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
           currency:PAYSTACK_CURRENCY,
         }).select("id").single();
 
-        // 3. Get business user_id so we can notify them and create the chat room
-        const{data:bizAccount}=await supabase
-          .from("business_accounts")
-          .select("user_id,name")
-          .eq("id",quote.business_id)
-          .limit(1)
-          .then(r=>({data:r.data?.[0]||null}));
-
-        const bizUserId=bizAccount?.user_id||null;
+        // 3. Get business user_id — solid lookup
+        let bizUserId=null;
+        let bizName="the service provider";
+        try{
+          const{data:bizRows}=await supabase
+            .from("business_accounts")
+            .select("user_id,name")
+            .eq("id",quote.business_id)
+            .limit(1);
+          if(bizRows&&bizRows.length>0){
+            bizUserId=bizRows[0].user_id;
+            bizName=bizRows[0].name||bizName;
+          }
+        }catch(e){console.warn("biz lookup error:",e);}
 
         // 4. Create chat room NOW (first time — payment is confirmed)
         let roomId=null;
@@ -933,13 +938,24 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
           }
         }
 
-        // 5. Send auto welcome message into chat room
+        // 5. Send auto welcome message — category-specific
         if(roomId){
+          const cat=req.listing_category||req.listing_name||"";
+          const isMedical=cat==="health"||cat.toLowerCase().includes("medical");
+          const isSchool=cat==="school"||cat==="agency";
+          let welcomeMsg="";
+          if(isMedical){
+            welcomeMsg=`✅ Payment confirmed!\n\nYou're now connected with ${req.listing_name||"the health provider"}. They will reach out to coordinate your appointment. Reference: ${req.ref||""}`;
+          } else if(isSchool){
+            welcomeMsg=`✅ Application fee received!\n\n${req.listing_name||"The agency"} will now begin processing your application. You will receive updates here. Reference: ${req.ref||""}`;
+          } else {
+            welcomeMsg=`✅ Payment confirmed!\n\nYou're now connected with ${req.listing_name||"the service provider"}. They will message you here to coordinate. Reference: ${req.ref||""}`;
+          }
           await supabase.from("direct_messages").insert({
             room_id:roomId,
             sender_id:null,
             sender_role:"platform",
-            content:`✅ Payment confirmed! Your booking is now active.\n\nYour case manager will be in touch shortly to coordinate delivery. Reference: ${req.ref||req.id?.slice(0,8)}`,
+            content:welcomeMsg,
             type:"system",
             read_by_customer:false,
             read_by_business:false,
