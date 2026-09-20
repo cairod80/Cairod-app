@@ -563,7 +563,7 @@ function filterContent(text){
   return {blocked:false};
 }
 
-function DirectRoomScreen({room,user,onBack}){
+function DirectRoomScreen({room,user,onBack,onGoToRequests}){
   const[messages,setMessages]=useState([]);
   const[input,setInput]=useState("");
   const[sending,setSending]=useState(false);
@@ -691,9 +691,9 @@ function DirectRoomScreen({room,user,onBack}){
                   {m.timeline&&<div style={{fontSize:11,color:"var(--sub)",marginBottom:4}}>⏱ {m.timeline}</div>}
                   {m.notes&&<div style={{fontSize:12,color:"var(--txt)",padding:"8px 10px",background:"var(--sand)",borderRadius:8,marginBottom:10,lineHeight:1.5}}>{m.notes}</div>}
                   {isCustomer&&(
-                    <button onClick={()=>{/* handled in My Requests */}}
+                    <button onClick={()=>onGoToRequests&&onGoToRequests()}
                       style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer"}}>
-                      ✅ Go to My Requests to Accept & Pay →
+                      ✅ Accept & Pay →
                     </button>
                   )}
                   <div style={{fontSize:9,color:"var(--sub)",marginTop:8,textAlign:"center"}}>
@@ -714,7 +714,7 @@ function DirectRoomScreen({room,user,onBack}){
                   <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:900,color:"var(--g)",marginBottom:10}}>
                     {parseFloat(m.amount||0).toLocaleString()} {m.currency||"NGN"}
                   </div>
-                  {isCustomer&&<div style={{fontSize:10,color:"var(--sub)"}}>Go to My Requests to pay securely.</div>}
+                  {isCustomer&&<button onClick={()=>onGoToRequests&&onGoToRequests()} style={{fontSize:11,color:"var(--g)",fontWeight:700,marginTop:4,background:"none",border:"none",cursor:"pointer",fontFamily:"'Outfit',sans-serif",padding:0}}>Go to My Requests to pay securely →</button>}
                   <div style={{fontSize:9,color:"var(--sub)",marginTop:6}}>{new Date(msg.created_at).toLocaleString("en-GB")}</div>
                 </div>
               </div>
@@ -879,28 +879,99 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
         service:req.what_i_need,
       },
       onSuccess:async(response)=>{
-        // Payment confirmed by Paystack — update records
+        // ── PAYMENT CONFIRMED ─────────────────────────────────────────────
+        // 1. Update quote + request status
         await supabase.from("quotes").update({status:"accepted"}).eq("id",quote.id);
         await supabase.from("service_requests").update({status:"in_progress"}).eq("id",req.id);
-        await supabase.from("bookings").insert({
+
+        // 2. Create booking
+        const{data:booking}=await supabase.from("bookings").insert({
           request_id:req.id,quote_id:quote.id,user_id:user.id,
-          business_id:quote.business_id,service_description:req.what_i_need,
-          gross_amount:quote.price,commission_rate:quote.commission_rate||12,
-          commission_amount:quote.commission_amount,payout_amount:quote.payout_amount,
+          business_id:quote.business_id,
+          service_description:req.what_i_need,
+          listing_name:req.listing_name||"",
+          gross_amount:quote.price,
+          commission_rate:quote.commission_rate||12,
+          commission_amount:quote.commission_amount,
+          payout_amount:quote.payout_amount,
           status:"in_progress",
           payment_ref:payRef,
           payment_status:"paid",
           paid_at:new Date().toISOString(),
           paystack_ref:response.reference,
           currency:PAYSTACK_CURRENCY,
-        });
-        // Notify business
-        await (async()=>{try{await supabase.from("notifications").insert({
-          user_id:quote.business_id,icon:"💰",
-          message:`Payment received for request ${req.ref}. Deliver the service to release your payout.`,
-          type:"payment_received",
-          metadata:{request_ref:req.ref,amount:quote.price}
+        }).select("id").single();
+
+        // 3. Get business user_id so we can notify them and create the chat room
+        const{data:bizAccount}=await supabase
+          .from("business_accounts")
+          .select("user_id,name")
+          .eq("id",quote.business_id)
+          .limit(1)
+          .then(r=>({data:r.data?.[0]||null}));
+
+        const bizUserId=bizAccount?.user_id||null;
+
+        // 4. Create chat room NOW (first time — payment is confirmed)
+        let roomId=null;
+        if(bizUserId){
+          const{data:existingRooms}=await supabase
+            .from("chat_rooms").select("id").eq("request_id",req.id).limit(1);
+          if(existingRooms?.[0]){
+            roomId=existingRooms[0].id;
+          } else {
+            const{data:newRoom}=await supabase.from("chat_rooms").insert({
+              request_id:req.id,
+              booking_id:booking?.id||null,
+              customer_id:user.id,
+              business_id:quote.business_id,
+              business_user_id:bizUserId,
+              listing_name:req.listing_name||"",
+              status:"active",
+            }).select("id").single();
+            roomId=newRoom?.id||null;
+          }
+        }
+
+        // 5. Send auto welcome message into chat room
+        if(roomId){
+          await supabase.from("direct_messages").insert({
+            room_id:roomId,
+            sender_id:null,
+            sender_role:"platform",
+            content:`✅ Payment confirmed! Your booking is now active.\n\nYour case manager will be in touch shortly to coordinate delivery. Reference: ${req.ref||req.id?.slice(0,8)}`,
+            type:"system",
+            read_by_customer:false,
+            read_by_business:false,
+          });
+        }
+
+        // 6. Notify business — with room link
+        if(bizUserId){
+          (async()=>{try{await supabase.from("notifications").insert({
+            user_id:bizUserId,
+            icon:"💰",
+            message:`Payment received for request ${req.ref||""}! ${(quote.price||0).toLocaleString()} ${PAYSTACK_CURRENCY} is held in escrow. Check your Bookings and Messages tabs.`,
+            type:"payment_received",
+            metadata:{request_ref:req.ref,amount:quote.price,room_id:roomId,booking_id:booking?.id}
+          });}catch{}})();
+        }
+
+        // 7. Notify admin
+        (async()=>{try{await supabase.from("notifications").insert({
+          user_id:"00000000-0000-0000-0000-000000000000", // admin sees in panel
+          icon:"💳",
+          message:`New paid booking: ${req.listing_name||""} — ${(quote.price||0).toLocaleString()} ${PAYSTACK_CURRENCY}. Ref: ${req.ref||""}. Paystack: ${response.reference}`,
+          type:"new_booking_admin",
+          metadata:{
+            request_ref:req.ref,
+            amount:quote.price,
+            paystack_ref:response.reference,
+            business_id:quote.business_id,
+            user_id:user.id,
+          }
         });}catch{}})();
+
         setPaying(false);setPaymentModal(null);
         onRefresh();
       },
@@ -4336,6 +4407,7 @@ function MainApp({user,onLogout}){
             room={openDMRoom}
             user={user}
             onBack={()=>setOpenDMRoom(null)}
+            onGoToRequests={()=>{setOpenDMRoom(null);setTab("requests");}}
           />
         )}
         {tab==="groups"&&!openGroup&&!openDMRoom&&(
