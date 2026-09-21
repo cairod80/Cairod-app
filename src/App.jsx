@@ -714,7 +714,40 @@ function DirectRoomScreen({room,user,onBack,onGoToRequests}){
                   <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:900,color:"var(--g)",marginBottom:10}}>
                     {parseFloat(m.amount||0).toLocaleString()} {m.currency||"NGN"}
                   </div>
-                  {isCustomer&&<button onClick={()=>onGoToRequests&&onGoToRequests()} style={{fontSize:11,color:"var(--g)",fontWeight:700,marginTop:4,background:"none",border:"none",cursor:"pointer",fontFamily:"'Outfit',sans-serif",padding:0}}>Go to My Requests to pay securely →</button>}
+                  {isCustomer&&(
+                    <button onClick={()=>{
+                      if(!window.PaystackPop){alert("Payment loading, please wait.");return;}
+                      const handler=window.PaystackPop.setup({
+                        key:PAYSTACK_PUBLIC_KEY,
+                        email:user?.email||"user@xairod.com",
+                        amount:Math.round((m.amount||0)*100),
+                        currency:m.currency||PAYSTACK_CURRENCY,
+                        ref:"XR-CHAT-PAY-"+Date.now(),
+                        metadata:{room_id:room.id,message_id:msg.id,stage:m.stage||""},
+                        callback:async(response)=>{
+                          if(response.status==="success"){
+                            // Mark this payment message as paid
+                            await supabase.from("direct_messages").update({
+                              metadata:{...m,paid:true,paystack_ref:response.reference,paid_at:new Date().toISOString()}
+                            }).eq("id",msg.id);
+                            // Send confirmation message
+                            await supabase.from("direct_messages").insert({
+                              room_id:room.id,sender_id:user.id,sender_role:"customer",
+                              content:`✅ Payment of ${(m.amount||0).toLocaleString()} ${m.currency||"NGN"} confirmed!
+Paystack ref: ${response.reference}`,
+                              type:"system",read_by_customer:true,read_by_business:false,
+                            });
+                          }
+                        },
+                        onClose:()=>{}
+                      });
+                      handler.openIframe();
+                    }}
+                      style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer",marginTop:4}}>
+                      💳 Pay {(m.amount||0).toLocaleString()} {m.currency||"NGN"} →
+                    </button>
+                  )}
+                  {m.paid&&<div style={{fontSize:10,color:"var(--g)",fontWeight:700,marginTop:4}}>✅ Payment confirmed</div>}
                   <div style={{fontSize:9,color:"var(--sub)",marginTop:6}}>{new Date(msg.created_at).toLocaleString("en-GB")}</div>
                 </div>
               </div>
@@ -857,9 +890,69 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
   const paystackReady=usePaystack();
 
   const acceptQuote=async(req,quote)=>{
-    // Show payment confirmation modal before charging
-    setPaymentModal({req,quote});
-    setPayError("");
+    if(!user){return;}
+    // ACCEPT QUOTE = create chat room and connect parties
+    // Payment happens LATER inside chat when business requests it
+    try{
+      // 1. Mark quote as accepted (not paid yet)
+      await supabase.from("quotes").update({status:"accepted"}).eq("id",quote.id);
+      await supabase.from("service_requests").update({status:"in_progress"}).eq("id",req.id);
+
+      // 2. Get business user_id
+      let bizUserId=null;let bizName="the service provider";
+      const{data:bizRows}=await supabase.from("business_accounts")
+        .select("user_id,name").eq("id",quote.business_id).limit(1);
+      if(bizRows?.[0]){bizUserId=bizRows[0].user_id;bizName=bizRows[0].name;}
+
+      // 3. Create chat room NOW (first time — triggered by quote acceptance)
+      let roomId=null;
+      const{data:existingRooms}=await supabase.from("chat_rooms")
+        .select("id").eq("request_id",req.id).limit(1);
+      if(existingRooms?.[0]){
+        roomId=existingRooms[0].id;
+      } else if(bizUserId){
+        const{data:newRoom}=await supabase.from("chat_rooms").insert({
+          request_id:req.id,
+          customer_id:user.id,
+          business_id:quote.business_id,
+          business_user_id:bizUserId,
+          listing_name:req.listing_name||"",
+          status:"active",
+        }).select("id").single();
+        roomId=newRoom?.id||null;
+      }
+
+      // 4. System welcome message
+      if(roomId){
+        await supabase.from("direct_messages").insert({
+          room_id:roomId,sender_id:null,sender_role:"platform",
+          content:`✅ Quote accepted!
+
+${user.name||"The customer"} accepted the quote from ${bizName}.
+
+You can now chat here to coordinate. When ready, ${bizName} will send a payment request inside this chat.`,
+          type:"system",read_by_customer:true,read_by_business:false,
+        });
+      }
+
+      // 5. Notify business
+      if(bizUserId){
+        (async()=>{try{await supabase.from("notifications").insert({
+          user_id:bizUserId,icon:"✅",
+          message:`${user.name||"A customer"} accepted your quote for ${req.listing_name||req.ref||"a request"}. Open Messages to start the conversation.`,
+          type:"quote_accepted",
+          metadata:{request_ref:req.ref,room_id:roomId}
+        });}catch{}})();
+      }
+
+      // 6. Refresh requests
+      onRefresh();
+      // 7. Navigate user to chat tab
+      alert("Quote accepted! Go to the Chat tab to talk with "+bizName+" and arrange payment.");
+    }catch(e){
+      console.error("acceptQuote error:",e);
+      alert("Something went wrong. Please try again.");
+    }
   };
 
   const processPayment=async(req,quote)=>{
