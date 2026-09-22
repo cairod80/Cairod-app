@@ -444,7 +444,7 @@ function ToastStack(){
     </div>
   );
 }
-function NotifBell({lang,onGoToRequests}){
+function NotifBell({lang,onGoToRequests,onGoToChat,onGoToHealth}){
   const{notifs,unread,markRead,toggleStar,markAllRead}=useNotif();
   const[open,setOpen]=useState(false);
   const[activeTab,setActiveTab]=useState("inbox");
@@ -484,8 +484,20 @@ function NotifBell({lang,onGoToRequests}){
                 if(!n.is_read)markRead(n.id);
                 // Request/quote/payment notifications → open My Requests tab
                 if(["new_request","quote","completion","payment_received","quote_accepted","kyc_approved","kyc_rejected"].includes(n.type)){
-                  setNotifOpen(false);
-                  onGoToRequests&&onGoToRequests();
+                  // Route by notification type
+                  const t=n.type||"";
+                  if(t==="case_message"||t==="medical_intake"){
+                    setNotifOpen(false);
+                    onGoToHealth&&onGoToHealth(n.metadata?.case_ref||"");
+                  } else if(t==="direct_message"){
+                    setNotifOpen(false);
+                    onGoToChat&&onGoToChat(n.metadata?.room_id||null);
+                  } else if(t==="quote"||t==="quote_accepted"||t==="payment_received"||t==="new_request"||t==="completion"){
+                    setNotifOpen(false);
+                    onGoToRequests&&onGoToRequests();
+                  } else {
+                    setNotifOpen(false);
+                  }
                 } else {
                   setDetail(n);
                 }
@@ -898,11 +910,16 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
       await supabase.from("quotes").update({status:"accepted"}).eq("id",quote.id);
       await supabase.from("service_requests").update({status:"in_progress"}).eq("id",req.id);
 
-      // 2. Get business user_id
+      // 2. Get business user_id — robust lookup with error handling
       let bizUserId=null;let bizName="the service provider";
-      const{data:bizRows}=await supabase.from("business_accounts")
-        .select("user_id,name").eq("id",quote.business_id).limit(1);
-      if(bizRows?.[0]){bizUserId=bizRows[0].user_id;bizName=bizRows[0].name;}
+      try{
+        const{data:bizRows,error:bizErr}=await supabase
+          .from("business_accounts").select("user_id,name").eq("id",quote.business_id);
+        if(bizErr) console.warn("bizRows error:",bizErr.message);
+        if(bizRows&&bizRows.length>0){bizUserId=bizRows[0].user_id;bizName=bizRows[0].name||bizName;}
+        else console.warn("No business account found for id:",quote.business_id);
+      }catch(e){console.warn("biz lookup exception:",e);}
+      console.log("bizUserId resolved:",bizUserId);
 
       // 3. Create chat room NOW (first time — triggered by quote acceptance)
       let roomId=null;
@@ -911,15 +928,17 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
       if(existingRooms?.[0]){
         roomId=existingRooms[0].id;
       } else if(bizUserId){
-        const{data:newRoom}=await supabase.from("chat_rooms").insert({
+        const{data:newRoom,error:roomErr}=await supabase.from("chat_rooms").insert({
           request_id:req.id,
           customer_id:user.id,
           business_id:quote.business_id,
           business_user_id:bizUserId,
-          listing_name:req.listing_name||"",
+          listing_name:req.listing_name||bizName,
           status:"active",
         }).select("id").single();
+        if(roomErr) console.warn("Room create error:",roomErr.message);
         roomId=newRoom?.id||null;
+        console.log("Room created:",roomId,"for business_user_id:",bizUserId);
       }
 
       // 4. System welcome message
@@ -3929,7 +3948,18 @@ function MainApp({user,onLogout}){
   const[lang,setLang]=useState("en");
   const[groups,setGroups]=useState(GROUPS);
   const[openGroup,setOpenGroup]=useState(null);
-  const[openDMRoom,setOpenDMRoom]=useState(null); // group detail view
+  const[openDMRoom,setOpenDMRoom]=useState(null);
+
+  // Check if navigated here from notification
+  useEffect(()=>{
+    if(tab==="groups"&&window._pendingRoomId){
+      const roomId=window._pendingRoomId;
+      window._pendingRoomId=null;
+      // Find the room and open it
+      supabase.from("chat_rooms").select("*").eq("id",roomId).limit(1)
+        .then(({data})=>{if(data?.[0]) setOpenDMRoom(data[0]);});
+    }
+  },[tab]); // group detail view
   const[listings,setListings]=useState(DATA); // starts with mock, replaced by Supabase
   const[qaList,setQaList]=useState(QA);
   const[universities,setUniversities]=useState(UNIVERSITIES); // starts with mock
@@ -4155,7 +4185,34 @@ function MainApp({user,onLogout}){
                 {planInfo?.icon} {planInfo?.label}
               </div>
             )}
-            <NotifBell lang={lang} onGoToRequests={()=>setTab("requests")}/>
+            <NotifBell
+              lang={lang}
+              onGoToRequests={()=>{
+                setTab("requests");
+                // Force reload requests
+                if(user?.id){
+                  (async()=>{
+                    const{data:reqs}=await supabase.from("service_requests").select("*").eq("user_id",user.id).order("created_at",{ascending:false});
+                    if(reqs){
+                      const ids=reqs.map(r=>r.id);
+                      let qmap={};
+                      if(ids.length>0){const{data:qs}=await supabase.from("quotes").select("*").in("request_id",ids);(qs||[]).forEach(q=>{if(!qmap[q.request_id])qmap[q.request_id]=[];qmap[q.request_id].push(q);});}
+                      setMyRequests(reqs.map(r=>({...r,quotes:qmap[r.id]||[]})));
+                    }
+                  })();
+                }
+              }}
+              onGoToHealth={(caseRef)=>{
+                setTab("health");
+                // Store case ref so health screen can open the chat
+                window._pendingCaseRef=caseRef;
+              }}
+              onGoToChat={(roomId)=>{
+                setTab("groups");
+                // Store room ID so groups tab can open it
+                window._pendingRoomId=roomId;
+              }}
+            />
             <button className="icon-btn" onClick={()=>setDark(!dark)}>{dark?"☀️":"🌙"}</button>
             <button className="icon-btn" onClick={()=>setLang(l=>l==="en"?"ar":"en")} style={{fontSize:11,fontWeight:800,minWidth:32,padding:"4px 6px"}}>{t.language}</button>
             {user?.isAdmin&&(
