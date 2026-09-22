@@ -833,16 +833,36 @@ function DirectMessagesScreen({user,onOpenRoom}){
 
   useEffect(()=>{
     if(!user?.id) return;
-    supabase.from("chat_rooms")
+    // Load rooms from service_requests that are in_progress (accepted quotes)
+    // Each in_progress request with messages IS a chat room
+    supabase.from("service_requests")
       .select("*")
-      .or(`customer_id.eq.${user.id},business_user_id.eq.${user.id}`)
-      .eq("status","active")
+      .eq("user_id",user.id)
+      .eq("status","in_progress")
       .order("created_at",{ascending:false})
-      .then(({data})=>{if(data)setRooms(data);setLoading(false);});
-    // Realtime new rooms
-    const ch=supabase.channel("rooms_"+user.id)
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_rooms",filter:`customer_id=eq.${user.id}`},
-        payload=>{setRooms(prev=>[payload.new,...prev]);})
+      .then(async({data:reqs})=>{
+        if(!reqs||reqs.length===0){setLoading(false);return;}
+        // Check which requests actually have messages
+        const ids=reqs.map(r=>r.id);
+        const{data:msgs}=await supabase.from("direct_messages")
+          .select("room_id").in("room_id",ids);
+        const withMsgs=new Set((msgs||[]).map(m=>m.room_id));
+        // Show all in_progress requests — with or without messages yet
+        setRooms(reqs.map(r=>({
+          id:r.id,             // request.id = room_id
+          request_id:r.id,
+          listing_name:r.listing_name||"Service Request",
+          customer_id:r.user_id,
+          status:"active",
+          has_messages:withMsgs.has(r.id),
+          created_at:r.created_at,
+        })));
+        setLoading(false);
+      });
+    // Realtime — new messages
+    const ch=supabase.channel("dm_user_"+user.id)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"direct_messages"},
+        ()=>{/* refresh */})
       .subscribe();
     return()=>supabase.removeChannel(ch);
   },[user?.id]);
@@ -902,75 +922,62 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
   const paystackReady=usePaystack();
 
   const acceptQuote=async(req,quote)=>{
-    if(!user){return;}
-    // ACCEPT QUOTE = create chat room and connect parties
-    // Payment happens LATER inside chat when business requests it
+    if(!user) return;
     try{
-      // 1. Mark quote as accepted (not paid yet)
+      // 1. Accept quote — status in_progress, no payment yet
       await supabase.from("quotes").update({status:"accepted"}).eq("id",quote.id);
       await supabase.from("service_requests").update({status:"in_progress"}).eq("id",req.id);
 
-      // 2. Get business user_id — robust lookup with error handling
+      // 2. Get business details
       let bizUserId=null;let bizName="the service provider";
-      try{
-        const{data:bizRows,error:bizErr}=await supabase
-          .from("business_accounts").select("user_id,name").eq("id",quote.business_id);
-        if(bizErr) console.warn("bizRows error:",bizErr.message);
-        if(bizRows&&bizRows.length>0){bizUserId=bizRows[0].user_id;bizName=bizRows[0].name||bizName;}
-        else console.warn("No business account found for id:",quote.business_id);
-      }catch(e){console.warn("biz lookup exception:",e);}
-      console.log("bizUserId resolved:",bizUserId);
+      const{data:bizRows}=await supabase
+        .from("business_accounts").select("user_id,name").eq("id",quote.business_id);
+      if(bizRows?.[0]){bizUserId=bizRows[0].user_id;bizName=bizRows[0].name||bizName;}
 
-      // 3. Create chat room NOW (first time — triggered by quote acceptance)
-      let roomId=null;
-      const{data:existingRooms}=await supabase.from("chat_rooms")
-        .select("id").eq("request_id",req.id).limit(1);
-      if(existingRooms?.[0]){
-        roomId=existingRooms[0].id;
-      } else if(bizUserId){
-        const{data:newRoom,error:roomErr}=await supabase.from("chat_rooms").insert({
-          request_id:req.id,
-          customer_id:user.id,
-          business_id:quote.business_id,
-          business_user_id:bizUserId,
-          listing_name:req.listing_name||bizName,
-          status:"active",
-        }).select("id").single();
-        if(roomErr) console.warn("Room create error:",roomErr.message);
-        roomId=newRoom?.id||null;
-        console.log("Room created:",roomId,"for business_user_id:",bizUserId);
-      }
+      // 3. Use request.id directly as room_id — no separate chat_rooms table
+      // Check if welcome message already exists for this request
+      const{data:existingMsgs}=await supabase.from("direct_messages")
+        .select("id").eq("room_id",req.id).limit(1);
 
-      // 4. System welcome message
-      if(roomId){
+      if(!existingMsgs||existingMsgs.length===0){
+        // First message creates the "room" — room_id = service_request.id
         await supabase.from("direct_messages").insert({
-          room_id:roomId,sender_id:null,sender_role:"platform",
-          content:`✅ Quote accepted!
-
-${user.name||"The customer"} accepted the quote from ${bizName}.
-
-You can now chat here to coordinate. When ready, ${bizName} will send a payment request inside this chat.`,
-          type:"system",read_by_customer:true,read_by_business:false,
+          room_id:req.id,
+          sender_id:null,
+          sender_role:"platform",
+          content:"✅ Quote accepted!\n\n"+
+            (user.name||"The customer")+" accepted the quote from "+bizName+".\n\n"+
+            "Use this chat to coordinate delivery. When ready, "+bizName+
+            " will send a payment request here.",
+          type:"system",
+          read_by_customer:true,
+          read_by_business:false,
+          request_id:req.id,
+          business_id:quote.business_id,
+          customer_id:user.id,
+          business_user_id:bizUserId,
+          listing_name:req.listing_name||"",
         });
       }
 
-      // 5. Notify business
+      // 4. Notify business
       if(bizUserId){
         (async()=>{try{await supabase.from("notifications").insert({
           user_id:bizUserId,icon:"✅",
-          message:`${user.name||"A customer"} accepted your quote for ${req.listing_name||req.ref||"a request"}. Open Messages to start the conversation.`,
+          message:(user.name||"A customer")+" accepted your quote for \""+
+            (req.listing_name||req.ref||"your service")+"\". Open Messages to chat.",
           type:"quote_accepted",
-          metadata:{request_ref:req.ref,room_id:roomId}
+          metadata:{request_ref:req.ref,room_id:req.id}
         });}catch{}})();
       }
 
-      // 6. Refresh requests
       onRefresh();
-      // 7. Navigate user to chat tab
-      alert("Quote accepted! Go to the Chat tab to talk with "+bizName+" and arrange payment.");
+      // Open the chat directly
+      setTab("groups");
+      setTimeout(()=>{window._pendingRoomId=req.id;},200);
     }catch(e){
       console.error("acceptQuote error:",e);
-      alert("Something went wrong. Please try again.");
+      alert("Could not accept quote: "+(e?.message||"unknown error. Check console."));
     }
   };
 
@@ -3950,14 +3957,25 @@ function MainApp({user,onLogout}){
   const[openGroup,setOpenGroup]=useState(null);
   const[openDMRoom,setOpenDMRoom]=useState(null);
 
-  // Check if navigated here from notification
+  // Check if navigated here from notification or acceptQuote
   useEffect(()=>{
     if(tab==="groups"&&window._pendingRoomId){
       const roomId=window._pendingRoomId;
       window._pendingRoomId=null;
-      // Find the room and open it
-      supabase.from("chat_rooms").select("*").eq("id",roomId).limit(1)
-        .then(({data})=>{if(data?.[0]) setOpenDMRoom(data[0]);});
+      // room_id = service_request.id — fetch the service request
+      supabase.from("service_requests").select("*").eq("id",roomId).limit(1)
+        .then(({data})=>{
+          if(data?.[0]){
+            setOpenDMRoom({
+              id:data[0].id,
+              request_id:data[0].id,
+              listing_name:data[0].listing_name||"Chat",
+              customer_id:data[0].user_id,
+              assigned_business_id:data[0].assigned_business_id,
+              status:"active",
+            });
+          }
+        });
     }
   },[tab]); // group detail view
   const[listings,setListings]=useState(DATA); // starts with mock, replaced by Supabase
