@@ -484,19 +484,21 @@ function NotifBell({lang,onGoToRequests,onGoToChat,onGoToHealth}){
                 if(!n.is_read)markRead(n.id);
                 // Request/quote/payment notifications → open My Requests tab
                 if(["new_request","quote","completion","payment_received","quote_accepted","kyc_approved","kyc_rejected"].includes(n.type)){
-                  // Route by notification type
+                  // Route by notification type — every tap goes somewhere
                   const t=n.type||"";
+                  setNotifOpen(false);
                   if(t==="case_message"||t==="medical_intake"){
-                    setNotifOpen(false);
                     onGoToHealth&&onGoToHealth(n.metadata?.case_ref||"");
-                  } else if(t==="direct_message"){
-                    setNotifOpen(false);
-                    onGoToChat&&onGoToChat(n.metadata?.room_id||null);
-                  } else if(t==="quote"||t==="quote_accepted"||t==="payment_received"||t==="new_request"||t==="completion"){
-                    setNotifOpen(false);
+                  } else if(t==="direct_message"||t==="quote_accepted"){
+                    // Open chat tab — room_id is service_request.id
+                    const roomId=n.metadata?.room_id||null;
+                    if(roomId){setTab("groups");setTimeout(()=>{window._pendingRoomId=roomId;},200);}
+                    else{setTab("groups");}
+                  } else if(t==="quote"||t==="payment_received"||t==="new_request"||t==="completion"||t==="request_sent"||t==="kyc_approved"||t==="new_booking_admin"){
                     onGoToRequests&&onGoToRequests();
                   } else {
-                    setNotifOpen(false);
+                    // Default — go to requests tab for any unknown type
+                    onGoToRequests&&onGoToRequests();
                   }
                 } else {
                   setDetail(n);
@@ -506,8 +508,11 @@ function NotifBell({lang,onGoToRequests,onGoToChat,onGoToHealth}){
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:11,fontWeight:n.is_read?500:700,lineHeight:1.3,marginBottom:1}}>{n.message}</div>
                   {n.detail&&<div style={{fontSize:10,color:"var(--sub)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.detail}</div>}
-                  {["quote","payment_received","completion"].includes(n.type)&&(
+                  {["quote","payment_received","completion","new_request","request_sent","quote_accepted"].includes(n.type)&&(
                     <div style={{fontSize:9,color:"var(--g)",fontWeight:700,marginTop:3}}>Tap to view in My Requests →</div>
+                  )}
+                  {["direct_message"].includes(n.type)&&(
+                    <div style={{fontSize:9,color:"var(--g)",fontWeight:700,marginTop:3}}>Tap to open chat →</div>
                   )}
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0,alignItems:"center"}}>
