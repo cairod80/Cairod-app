@@ -3962,6 +3962,21 @@ function MainApp({user,onLogout}){
   const[openGroup,setOpenGroup]=useState(null);
   const[openDMRoom,setOpenDMRoom]=useState(null);
 
+  // Reload requests every time user opens the requests tab
+  useEffect(()=>{
+    if(tab!=="requests"||!user?.id) return;
+    (async()=>{
+      const{data:reqs}=await supabase.from("service_requests")
+        .select("*").eq("user_id",user.id).order("created_at",{ascending:false});
+      if(!reqs||reqs.length===0){setMyRequests([]);return;}
+      const ids=reqs.map(r=>r.id);
+      const{data:qs}=await supabase.from("quotes").select("*").in("request_id",ids);
+      const qmap={};
+      (qs||[]).forEach(q=>{if(!qmap[q.request_id])qmap[q.request_id]=[];qmap[q.request_id].push(q);});
+      setMyRequests(reqs.map(r=>({...r,quotes:qmap[r.id]||[]})));
+    })();
+  },[tab,user?.id]);
+
   // Check if navigated here from notification or acceptQuote
   useEffect(()=>{
     if(tab==="groups"&&window._pendingRoomId){
