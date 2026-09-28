@@ -902,11 +902,18 @@ function DirectMessagesScreen({user,onOpenRoom}){
 // ════════════════════════════════════════════════════════════════════════════
 // MY REQUESTS SCREEN — user sees requests, quotes, accepts deals, enters code
 // ════════════════════════════════════════════════════════════════════════════
-function MyRequestsScreen({user,lang,requests,onRefresh}){
+function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading}){
   const[filter,setFilter]=useState("all");
   const[confCode,setConfCode]=useState({});
   const[confLoading,setConfLoading]=useState({});
   const[confMsg,setConfMsg]=useState({});
+
+  if(reqLoading) return(
+    <div style={{padding:40,textAlign:"center"}}>
+      <div style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:800,color:"var(--sub)",marginBottom:8}}>Loading your requests…</div>
+      <div style={{fontSize:13,color:"var(--sub)"}}>Just a moment</div>
+    </div>
+  );
 
   const filtered=filter==="all"?requests:requests.filter(r=>r.status===filter);
 
@@ -939,21 +946,23 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
         .from("business_accounts").select("user_id,name").eq("id",quote.business_id);
       if(bizRows?.[0]){bizUserId=bizRows[0].user_id;bizName=bizRows[0].name||bizName;}
 
-      // 3. Use request.id directly as room_id — no separate chat_rooms table
-      // Check if welcome message already exists for this request
+      // 3. Use request.id as room_id — one unique room per request
+      // Also check if this business-user pair already has an active room
+      // (to avoid duplicate rooms for same business)
       const{data:existingMsgs}=await supabase.from("direct_messages")
-        .select("id").eq("room_id",req.id).limit(1);
+        .select("id,room_id").eq("business_id",quote.business_id)
+        .eq("customer_id",user.id).limit(1);
+
+      const existingRoomId=existingMsgs?.[0]?.room_id||null;
+      const roomId=existingRoomId||req.id; // reuse existing room or use request id
 
       if(!existingMsgs||existingMsgs.length===0){
-        // First message creates the "room" — room_id = service_request.id
+        // First message — creates the room
         await supabase.from("direct_messages").insert({
-          room_id:req.id,
+          room_id:roomId,
           sender_id:null,
           sender_role:"platform",
-          content:"✅ Quote accepted!\n\n"+
-            (user.name||"The customer")+" accepted the quote from "+bizName+".\n\n"+
-            "Use this chat to coordinate delivery. When ready, "+bizName+
-            " will send a payment request here.",
+          content:`✅ Quote accepted!\n\n${user.name||"The customer"} accepted the quote from ${bizName}.\n\nUse this chat to coordinate. When ready, ${bizName} will send a payment request here.`,
           type:"system",
           read_by_customer:true,
           read_by_business:false,
@@ -977,9 +986,10 @@ function MyRequestsScreen({user,lang,requests,onRefresh}){
       }
 
       onRefresh();
-      // Open the chat directly
+      // Open the chat — use existing room id or the request id
+      const finalRoomId=existingRoomId||req.id;
       setTab("groups");
-      setTimeout(()=>{window._pendingRoomId=req.id;},200);
+      setTimeout(()=>{window._pendingRoomId=finalRoomId;},200);
     }catch(e){
       console.error("acceptQuote error:",e);
       alert("Could not accept quote: "+(e?.message||"unknown error. Check console."));
@@ -3962,18 +3972,22 @@ function MainApp({user,onLogout}){
   const[openGroup,setOpenGroup]=useState(null);
   const[openDMRoom,setOpenDMRoom]=useState(null);
 
+  const[reqLoading,setReqLoading]=useState(false);
+
   // Reload requests every time user opens the requests tab
   useEffect(()=>{
     if(tab!=="requests"||!user?.id) return;
+    setReqLoading(true);
     (async()=>{
       const{data:reqs}=await supabase.from("service_requests")
         .select("*").eq("user_id",user.id).order("created_at",{ascending:false});
-      if(!reqs||reqs.length===0){setMyRequests([]);return;}
+      if(!reqs||reqs.length===0){setMyRequests([]);setReqLoading(false);return;}
       const ids=reqs.map(r=>r.id);
       const{data:qs}=await supabase.from("quotes").select("*").in("request_id",ids);
       const qmap={};
       (qs||[]).forEach(q=>{if(!qmap[q.request_id])qmap[q.request_id]=[];qmap[q.request_id].push(q);});
       setMyRequests(reqs.map(r=>({...r,quotes:qmap[r.id]||[]})));
+      setReqLoading(false);
     })();
   },[tab,user?.id]);
 
@@ -4764,7 +4778,7 @@ function MainApp({user,onLogout}){
         {tab==="chat"&&<div style={{padding:"0 17px"}}><ChatScreen user={user} lang={lang}/></div>}
         {tab==="study"&&<StudyRoom user={user} lang={lang}/>}
         {tab==="health"&&<HealthScreen user={user} lang={lang} listings={listings} setConnectListing={setConnectListing}/>}
-        {tab==="requests"&&<MyRequestsScreen user={user} lang={lang} requests={myRequests} onRefresh={()=>{
+        {tab==="requests"&&<MyRequestsScreen user={user} lang={lang} requests={myRequests} loading={reqLoading} onRefresh={()=>{
           (async()=>{
           const{data:reqs}=await supabase.from("service_requests").select("*").eq("user_id",user?.id).order("created_at",{ascending:false});
           if(!reqs) return;
