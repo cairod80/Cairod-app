@@ -3973,10 +3973,12 @@ function MainApp({user,onLogout}){
   const[openDMRoom,setOpenDMRoom]=useState(null);
 
   const[reqLoading,setReqLoading]=useState(false);
+  const[reqRefresh,setReqRefresh]=useState(0);
 
-  // Reload requests every time user opens the requests tab
+  // Reload whenever tab is requests OR refresh counter changes
   useEffect(()=>{
-    if(tab!=="requests"||!user?.id) return;
+    if(!user?.id) return;
+    if(tab!=="requests"&&reqRefresh===0) return;
     setReqLoading(true);
     (async()=>{
       const{data:reqs}=await supabase.from("service_requests")
@@ -3989,7 +3991,7 @@ function MainApp({user,onLogout}){
       setMyRequests(reqs.map(r=>({...r,quotes:qmap[r.id]||[]})));
       setReqLoading(false);
     })();
-  },[tab,user?.id]);
+  },[tab,user?.id,reqRefresh]);
 
   // Check if navigated here from notification or acceptQuote
   useEffect(()=>{
@@ -4241,18 +4243,8 @@ function MainApp({user,onLogout}){
               lang={lang}
               onGoToRequests={()=>{
                 setTab("requests");
-                // Force reload requests
-                if(user?.id){
-                  (async()=>{
-                    const{data:reqs}=await supabase.from("service_requests").select("*").eq("user_id",user.id).order("created_at",{ascending:false});
-                    if(reqs){
-                      const ids=reqs.map(r=>r.id);
-                      let qmap={};
-                      if(ids.length>0){const{data:qs}=await supabase.from("quotes").select("*").in("request_id",ids);(qs||[]).forEach(q=>{if(!qmap[q.request_id])qmap[q.request_id]=[];qmap[q.request_id].push(q);});}
-                      setMyRequests(reqs.map(r=>({...r,quotes:qmap[r.id]||[]})));
-                    }
-                  })();
-                }
+                // Bump refresh counter to force reload even if already on requests tab
+                setReqRefresh(n=>n+1);
               }}
               onGoToHealth={(caseRef)=>{
                 setTab("health");
