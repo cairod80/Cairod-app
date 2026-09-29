@@ -890,7 +890,7 @@ function DirectMessagesScreen({user,onOpenRoom}){
 // ════════════════════════════════════════════════════════════════════════════
 // MY REQUESTS SCREEN — user sees requests, quotes, accepts deals, enters code
 // ════════════════════════════════════════════════════════════════════════════
-function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading}){
+function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoToChat}){
   const[filter,setFilter]=useState("all");
   const[confCode,setConfCode]=useState({});
   const[confLoading,setConfLoading]=useState({});
@@ -977,8 +977,13 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading}){
       onRefresh();
       // Open the chat — use existing room id or the request id
       const finalRoomId=existingRoomId||req.id;
-      setTab("groups");
-      setTimeout(()=>{window._pendingRoomId=finalRoomId;},200);
+      // Navigate to chat — setTab lives in parent, use callback
+      if(onGoToChat){
+        onGoToChat(finalRoomId);
+      } else {
+        window._pendingRoomId=finalRoomId;
+        window.dispatchEvent(new CustomEvent("xairod_go_chat",{detail:{roomId:finalRoomId}}));
+      }
     }catch(e){
       console.error("acceptQuote error:",e);
       alert("Could not accept quote: "+(e?.message||"unknown error. Check console."));
@@ -4771,7 +4776,7 @@ function MainApp({user,onLogout}){
         {tab==="chat"&&<div style={{padding:"0 17px"}}><ChatScreen user={user} lang={lang}/></div>}
         {tab==="study"&&<StudyRoom user={user} lang={lang}/>}
         {tab==="health"&&<HealthScreen user={user} lang={lang} listings={listings} setConnectListing={setConnectListing}/>}
-        {tab==="requests"&&<MyRequestsScreen user={user} lang={lang} requests={myRequests} loading={reqLoading} onRefresh={()=>{
+        {tab==="requests"&&<MyRequestsScreen user={user} lang={lang} requests={myRequests} loading={reqLoading} onGoToChat={(roomId)=>{setTab("groups");setTimeout(()=>{window._pendingRoomId=roomId;},200);}} onRefresh={()=>{
           (async()=>{
           const{data:reqs}=await supabase.from("service_requests").select("*").eq("user_id",user?.id).order("created_at",{ascending:false});
           if(!reqs) return;
