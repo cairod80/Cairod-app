@@ -1147,6 +1147,11 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading}){
   return(
     <div style={{padding:"0 17px 80px"}}>
 
+      {/* DEBUG PANEL — remove after testing */}
+      <div style={{background:"rgba(200,134,26,0.1)",border:"1px solid rgba(200,134,26,0.2)",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:10,color:"#F5C550",fontWeight:700}}>
+        DEBUG: {requests.length} requests loaded · filter={filter} · filtered={filtered.length} · loading={String(reqLoading)}
+      </div>
+
       {/* ── PAYMENT MODAL ── */}
       {paymentModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0 0 0 0"}}>
