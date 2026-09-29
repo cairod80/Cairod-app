@@ -3968,11 +3968,12 @@ function MainApp({user,onLogout}){
 
   const[reqLoading,setReqLoading]=useState(false);
   const[reqRefresh,setReqRefresh]=useState(0);
+  const[showRequests,setShowRequests]=useState(false);
 
   // Reload whenever tab switches to requests OR refresh counter bumps
   useEffect(()=>{
     if(!user?.id) return;
-    if(tab!=="requests"&&reqRefresh===0) return; // run on tab switch OR refresh bump
+    if(reqRefresh===0) return; // only run when refresh is triggered
     setReqLoading(true);
     (async()=>{
       try{
@@ -3991,7 +3992,7 @@ function MainApp({user,onLogout}){
         setReqLoading(false); // always clear loading even on error
       }
     })();
-  },[tab,user?.id,reqRefresh]); // reqRefresh forces reload even if tab unchanged
+  },[user?.id,reqRefresh]); // reload when user changes or refresh triggered
 
   // Check if navigated here from notification or acceptQuote
   useEffect(()=>{
@@ -4094,10 +4095,9 @@ function MainApp({user,onLogout}){
   const NAV_LOCAL=[
     {id:"home",   label:t.home,      icon:NAV[0].icon},
     {id:"explore",label:t.explore,   icon:NAV[1].icon},
-    {id:"tips",   label:t.tips,      icon:NAV[2].icon},
-    {id:"community",label:t.community,icon:NAV[3].icon},
+    {id:"health", label:t.health||"Health", icon:NAV[2].icon||"🏥"},
+    {id:"requests",label:"Requests", icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>},
     {id:"groups", label:"Chat",      icon:"💬"},
-    // Plans tab removed — no subscriptions in commission model
     {id:"profile",label:t.profile,   icon:NAV[6].icon},
   ];
   const[saved,setSaved]=useState(new Set());
@@ -4242,8 +4242,9 @@ function MainApp({user,onLogout}){
             <NotifBell
               lang={lang}
               onGoToRequests={()=>{
-                setTab("requests");
-                // Bump refresh counter to force reload even if already on requests tab
+                // "requests" is not a nav tab — open profile which contains My Requests
+                setShowRequests(true);
+                setTab("profile");
                 setReqRefresh(n=>n+1);
               }}
               onGoToHealth={(caseRef)=>{
