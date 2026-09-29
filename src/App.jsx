@@ -481,27 +481,15 @@ function NotifBell({lang,onGoToRequests,onGoToChat,onGoToHealth}){
             {!list.length?<div style={{padding:"28px 14px",textAlign:"center",color:"var(--sub)",fontSize:11}}>Nothing here yet</div>:
             list.map(n=>(
               <div key={n.id} onClick={()=>{
-                if(!n.is_read)markRead(n.id);
-                // Request/quote/payment notifications → open My Requests tab
-                if(["new_request","quote","completion","payment_received","quote_accepted","kyc_approved","kyc_rejected"].includes(n.type)){
-                  // Route by notification type — every tap goes somewhere
-                  const t=n.type||"";
-                  setNotifOpen(false);
-                  if(t==="case_message"||t==="medical_intake"){
-                    onGoToHealth&&onGoToHealth(n.metadata?.case_ref||"");
-                  } else if(t==="direct_message"||t==="quote_accepted"){
-                    // Open chat tab — room_id is service_request.id
-                    const roomId=n.metadata?.room_id||null;
-                    if(roomId){setTab("groups");setTimeout(()=>{window._pendingRoomId=roomId;},200);}
-                    else{setTab("groups");}
-                  } else if(t==="quote"||t==="payment_received"||t==="new_request"||t==="completion"||t==="request_sent"||t==="kyc_approved"||t==="new_booking_admin"){
-                    onGoToRequests&&onGoToRequests();
-                  } else {
-                    // Default — go to requests tab for any unknown type
-                    onGoToRequests&&onGoToRequests();
-                  }
+                if(!n.is_read) markRead(n.id);
+                setOpen(false);
+                const t=n.type||"";
+                if(t==="case_message"||t==="medical_intake"){
+                  onGoToHealth&&onGoToHealth(n.metadata?.case_ref||"");
+                } else if(t==="direct_message"||t==="quote_accepted"){
+                  onGoToChat&&onGoToChat(n.metadata?.room_id||null);
                 } else {
-                  setDetail(n);
+                  onGoToRequests&&onGoToRequests();
                 }
               }} style={{display:"flex",gap:9,padding:"10px 12px",cursor:"pointer",background:n.is_read?"transparent":"rgba(10,107,62,0.04)",borderBottom:"1px solid var(--bdr)",alignItems:"flex-start"}}>
                 <div style={{fontSize:16,width:28,height:28,borderRadius:7,background:n.bg_color||"rgba(10,107,62,0.12)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{n.icon||"🔔"}</div>
