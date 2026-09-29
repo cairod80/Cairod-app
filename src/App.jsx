@@ -896,10 +896,11 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading}){
   const[confLoading,setConfLoading]=useState({});
   const[confMsg,setConfMsg]=useState({});
 
+  // Show subtle loading indicator inside the screen
   if(reqLoading) return(
-    <div style={{padding:40,textAlign:"center"}}>
-      <div style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:800,color:"var(--sub)",marginBottom:8}}>Loading your requests…</div>
-      <div style={{fontSize:13,color:"var(--sub)"}}>Just a moment</div>
+    <div style={{padding:"60px 20px",textAlign:"center"}}>
+      <div style={{fontSize:32,marginBottom:12}}>⏳</div>
+      <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:800,color:"var(--sub)"}}>Loading your requests…</div>
     </div>
   );
 
@@ -3963,23 +3964,29 @@ function MainApp({user,onLogout}){
   const[reqLoading,setReqLoading]=useState(false);
   const[reqRefresh,setReqRefresh]=useState(0);
 
-  // Reload whenever tab is requests OR refresh counter changes
+  // Reload whenever tab switches to requests OR refresh counter bumps
   useEffect(()=>{
     if(!user?.id) return;
-    if(tab!=="requests"&&reqRefresh===0) return;
+    if(tab!=="requests"&&reqRefresh===0) return; // run on tab switch OR refresh bump
     setReqLoading(true);
     (async()=>{
-      const{data:reqs}=await supabase.from("service_requests")
-        .select("*").eq("user_id",user.id).order("created_at",{ascending:false});
-      if(!reqs||reqs.length===0){setMyRequests([]);setReqLoading(false);return;}
-      const ids=reqs.map(r=>r.id);
-      const{data:qs}=await supabase.from("quotes").select("*").in("request_id",ids);
-      const qmap={};
-      (qs||[]).forEach(q=>{if(!qmap[q.request_id])qmap[q.request_id]=[];qmap[q.request_id].push(q);});
-      setMyRequests(reqs.map(r=>({...r,quotes:qmap[r.id]||[]})));
-      setReqLoading(false);
+      try{
+        const{data:reqs,error:reqErr}=await supabase.from("service_requests")
+          .select("*").eq("user_id",user.id).order("created_at",{ascending:false});
+        if(reqErr) throw reqErr;
+        if(!reqs||reqs.length===0){setMyRequests([]);setReqLoading(false);return;}
+        const ids=reqs.map(r=>r.id);
+        const{data:qs}=await supabase.from("quotes").select("*").in("request_id",ids);
+        const qmap={};
+        (qs||[]).forEach(q=>{if(!qmap[q.request_id])qmap[q.request_id]=[];qmap[q.request_id].push(q);});
+        setMyRequests(reqs.map(r=>({...r,quotes:qmap[r.id]||[]})));
+      }catch(e){
+        console.error("Requests load failed:",e);
+      }finally{
+        setReqLoading(false); // always clear loading even on error
+      }
     })();
-  },[tab,user?.id,reqRefresh]);
+  },[tab,user?.id,reqRefresh]); // reqRefresh forces reload even if tab unchanged
 
   // Check if navigated here from notification or acceptQuote
   useEffect(()=>{
