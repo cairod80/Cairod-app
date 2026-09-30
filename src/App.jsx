@@ -619,6 +619,11 @@ function DirectRoomScreen({room,user,onBack,onGoToRequests}){
       type:"text",
       read_by_customer:isCustomer,
       read_by_business:!isCustomer,
+      // Always store both party IDs so RLS works for both sides
+      customer_id:room.customer_id||user.id,
+      business_user_id:room.business_user_id||room.assigned_business_user_id||null,
+      business_id:room.assigned_business_id||room.business_id||null,
+      request_id:room.request_id||room.id,
     }).select().single();
     if(msg) setMessages(prev=>[...prev,msg]);
     // Notify other party
@@ -840,12 +845,21 @@ function DirectMessagesScreen({user,onOpenRoom}){
         const{data:msgs}=await supabase.from("direct_messages")
           .select("room_id").in("room_id",ids);
         const withMsgs=new Set((msgs||[]).map(m=>m.room_id));
-        // Show all in_progress requests — with or without messages yet
+        // Fetch business_user_id for each request so messages have correct IDs
+        const bizIds=[...new Set(reqs.map(r=>r.assigned_business_id).filter(Boolean))];
+        let bizUserMap={};
+        if(bizIds.length>0){
+          const{data:bizAccts}=await supabase.from("business_accounts")
+            .select("id,user_id").in("id",bizIds);
+          (bizAccts||[]).forEach(b=>{bizUserMap[b.id]=b.user_id;});
+        }
         setRooms(reqs.map(r=>({
-          id:r.id,             // request.id = room_id
+          id:r.id,
           request_id:r.id,
           listing_name:r.listing_name||"Service Request",
           customer_id:r.user_id,
+          assigned_business_id:r.assigned_business_id,
+          business_user_id:bizUserMap[r.assigned_business_id]||null,
           status:"active",
           has_messages:withMsgs.has(r.id),
           created_at:r.created_at,
