@@ -949,18 +949,14 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
         .from("business_accounts").select("user_id,name").eq("id",quote.business_id);
       if(bizRows?.[0]){bizUserId=bizRows[0].user_id;bizName=bizRows[0].name||bizName;}
 
-      // 3. Use request.id as room_id — one unique room per request
-      // Also check if this business-user pair already has an active room
-      // (to avoid duplicate rooms for same business)
-      const{data:existingMsgs}=await supabase.from("direct_messages")
-        .select("id,room_id").eq("business_id",quote.business_id)
-        .eq("customer_id",user.id).limit(1);
+      // 3. Use request.id as room_id — simple, always correct
+      const roomId=req.id;
 
-      const existingRoomId=existingMsgs?.[0]?.room_id||null;
-      const roomId=existingRoomId||req.id; // reuse existing room or use request id
+      // Check if welcome message already sent for this room
+      const{data:existingMsgs}=await supabase.from("direct_messages")
+        .select("id").eq("room_id",roomId).limit(1);
 
       if(!existingMsgs||existingMsgs.length===0){
-        // First message — creates the room
         await supabase.from("direct_messages").insert({
           room_id:roomId,
           sender_id:null,
@@ -990,7 +986,7 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
 
       onRefresh();
       // Open the chat — use existing room id or the request id
-      const finalRoomId=existingRoomId||req.id;
+      const finalRoomId=req.id;
       // Navigate to chat — setTab lives in parent, use callback
       if(onGoToChat){
         onGoToChat(finalRoomId);
