@@ -619,11 +619,10 @@ function DirectRoomScreen({room,user,onBack,onGoToRequests}){
       type:"text",
       read_by_customer:isCustomer,
       read_by_business:!isCustomer,
-      // Always store both party IDs so RLS works for both sides
-      customer_id:room.customer_id||user.id,
-      business_user_id:room.business_user_id||room.assigned_business_user_id||null,
-      business_id:room.assigned_business_id||room.business_id||null,
-      request_id:room.request_id||room.id,
+      customer_id:room.customer_id||null,
+      business_user_id:room.business_user_id||null,
+      business_id:room.business_id||null,
+      request_id:room.request_id||null,
     }).select().single();
     if(msg) setMessages(prev=>[...prev,msg]);
     // Notify other party
@@ -831,39 +830,15 @@ function DirectMessagesScreen({user,onOpenRoom}){
 
   useEffect(()=>{
     if(!user?.id) return;
-    // Load rooms from service_requests that are in_progress (accepted quotes)
-    // Each in_progress request with messages IS a chat room
-    supabase.from("service_requests")
+    // Load rooms from chat_rooms — messages use chat_rooms.id as room_id
+    supabase.from("chat_rooms")
       .select("*")
-      .eq("user_id",user.id)
-      .eq("status","in_progress")
+      .eq("customer_id",user.id)
+      .eq("status","active")
       .order("created_at",{ascending:false})
-      .then(async({data:reqs})=>{
-        if(!reqs||reqs.length===0){setLoading(false);return;}
-        // Check which requests actually have messages
-        const ids=reqs.map(r=>r.id);
-        const{data:msgs}=await supabase.from("direct_messages")
-          .select("room_id").in("room_id",ids);
-        const withMsgs=new Set((msgs||[]).map(m=>m.room_id));
-        // Fetch business_user_id for each request so messages have correct IDs
-        const bizIds=[...new Set(reqs.map(r=>r.assigned_business_id).filter(Boolean))];
-        let bizUserMap={};
-        if(bizIds.length>0){
-          const{data:bizAccts}=await supabase.from("business_accounts")
-            .select("id,user_id").in("id",bizIds);
-          (bizAccts||[]).forEach(b=>{bizUserMap[b.id]=b.user_id;});
-        }
-        setRooms(reqs.map(r=>({
-          id:r.id,
-          request_id:r.id,
-          listing_name:r.listing_name||"Service Request",
-          customer_id:r.user_id,
-          assigned_business_id:r.assigned_business_id,
-          business_user_id:bizUserMap[r.assigned_business_id]||null,
-          status:"active",
-          has_messages:withMsgs.has(r.id),
-          created_at:r.created_at,
-        })));
+      .then(({data,error})=>{
+        if(error) console.warn("chat_rooms load error:",error.message);
+        setRooms(data||[]);
         setLoading(false);
       });
     // Realtime — new messages
@@ -949,28 +924,45 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
         .from("business_accounts").select("user_id,name").eq("id",quote.business_id);
       if(bizRows?.[0]){bizUserId=bizRows[0].user_id;bizName=bizRows[0].name||bizName;}
 
-      // 3. Use request.id as room_id — simple, always correct
-      const roomId=req.id;
+      // 3. Create or find chat_rooms row — messages use chat_rooms.id as room_id
+      let roomId=null;
+      const{data:existingRoom}=await supabase.from("chat_rooms")
+        .select("id").eq("request_id",req.id).limit(1);
 
-      // Check if welcome message already sent for this room
-      const{data:existingMsgs}=await supabase.from("direct_messages")
-        .select("id").eq("room_id",roomId).limit(1);
-
-      if(!existingMsgs||existingMsgs.length===0){
-        await supabase.from("direct_messages").insert({
-          room_id:roomId,
-          sender_id:null,
-          sender_role:"platform",
-          content:`✅ Quote accepted!\n\n${user.name||"The customer"} accepted the quote from ${bizName}.\n\nUse this chat to coordinate. When ready, ${bizName} will send a payment request here.`,
-          type:"system",
-          read_by_customer:true,
-          read_by_business:false,
+      if(existingRoom?.[0]){
+        roomId=existingRoom[0].id;
+      } else {
+        const{data:newRoom,error:roomErr}=await supabase.from("chat_rooms").insert({
           request_id:req.id,
-          business_id:quote.business_id,
           customer_id:user.id,
+          business_id:quote.business_id,
           business_user_id:bizUserId,
-          listing_name:req.listing_name||"",
-        });
+          listing_name:req.listing_name||bizName,
+          status:"active",
+        }).select("id").single();
+        if(roomErr) console.warn("chat_rooms insert error:",roomErr.message);
+        roomId=newRoom?.id||null;
+      }
+
+      // Send welcome message into the chat room
+      if(roomId){
+        const{data:existingMsgs}=await supabase.from("direct_messages")
+          .select("id").eq("room_id",roomId).limit(1);
+        if(!existingMsgs||existingMsgs.length===0){
+          await supabase.from("direct_messages").insert({
+            room_id:roomId,
+            sender_id:null,
+            sender_role:"platform",
+            content:`✅ Quote accepted!\n\n${user.name||"The customer"} accepted the quote from ${bizName}.\n\nUse this chat to coordinate. When ready, ${bizName} will send a payment request here.`,
+            type:"system",
+            read_by_customer:true,
+            read_by_business:false,
+            request_id:req.id,
+            business_id:quote.business_id,
+            customer_id:user.id,
+            business_user_id:bizUserId,
+          });
+        }
       }
 
       // 4. Notify business
