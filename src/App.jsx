@@ -7,10 +7,25 @@ const supabase = createClient(
   process.env.REACT_APP_SUPABASE_ANON_KEY
 );
 
+const sendEmail=async(to,template,data)=>{
+  if(!to) return;
+  try{
+    await fetch("https://gfvsosvszxwazuqnsavq.supabase.co/functions/v1/send-email",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmdnNvc3Zzenh3YXp1cW5zYXZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwODcxNjAsImV4cCI6MjA5MzY2MzE2MH0.SvSc1IDr_iK8YweQpKarmglQTPV7w2dNkKcbFim_Ztc"},
+      body:JSON.stringify({to,template,data:data||{}})
+    });
+  }catch(e){console.warn("Email send failed:",e);}
+};
+
+
 // ── PAYSTACK CONFIG ──────────────────────────────────────────────────────────
 // ⚠️  TEMPORARY: Using partner Paystack account in NGN
 // Replace PAYSTACK_PUBLIC_KEY with new key after regenerating on dashboard
 // Replace PAYSTACK_CURRENCY with "EGP" once Xairod gets its own Paystack account
+
+
+
 const PAYSTACK_PUBLIC_KEY = process.env.REACT_APP_PAYSTACK_KEY || "pk_live_ee12723c71f0bf534bed567b1423cf2b4c479c3c";
 const PAYSTACK_CURRENCY   = "NGN"; // Change to "EGP" when Xairod Paystack is ready
 
@@ -1092,15 +1107,38 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
           });
         }
 
-        // 6. Notify business — with room link
+        // 6. Notify business — with room link + email
         if(bizUserId){
-          (async()=>{try{await supabase.from("notifications").insert({
-            user_id:bizUserId,
-            icon:"💰",
-            message:`Payment received for request ${req.ref||""}! ${(quote.price||0).toLocaleString()} ${PAYSTACK_CURRENCY} is held in escrow. Check your Bookings and Messages tabs.`,
-            type:"payment_received",
-            metadata:{request_ref:req.ref,amount:quote.price,room_id:roomId,booking_id:booking?.id}
-          });}catch{}})();
+          (async()=>{
+            try{
+              await supabase.from("notifications").insert({
+                user_id:bizUserId,
+                icon:"💰",
+                message:`Payment received for request ${req.ref||""}! ${(quote.price||0).toLocaleString()} ${PAYSTACK_CURRENCY} held in escrow. Check Bookings and Messages.`,
+                type:"payment_received",
+                metadata:{request_ref:req.ref,amount:quote.price,room_id:roomId,booking_id:booking?.id}
+              });
+              // Email business
+              const{data:biz}=await supabase.from("business_accounts")
+                .select("email,name").eq("id",quote.business_id).single();
+              if(biz) sendEmail(biz.email,"new_booking",{
+                biz_name:biz.name||"Business",
+                customer_name:user?.name||"Customer",
+                service:req.listing_name||"Service",
+                amount:String(quote.price||0),
+                payout:String(quote.payout_amount||0),
+                paystack_ref:response.reference||"",
+                request_ref:req.ref||""
+              });
+              // Email customer
+              sendEmail(user?.email,"booking_confirmed_customer",{
+                name:user?.name||"Customer",
+                service:req.listing_name||"Service",
+                amount:String(quote.price||0),
+                ref:req.ref||""
+              });
+            }catch(e){console.warn("Biz notify error:",e);}
+          })();
         }
 
         // 7. Notify admin
@@ -1146,6 +1184,40 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
     }
     await supabase.from("bookings").update({status:"completed",completed_at:new Date().toISOString()}).eq("id",booking.id);
     await supabase.from("service_requests").update({status:"completed"}).eq("id",req.id);
+
+    // Notify business — payment released
+    (async()=>{
+      try{
+        const{data:bizAcct}=await supabase.from("business_accounts")
+          .select("user_id,email,name").eq("id",booking.business_id).single();
+        if(bizAcct){
+          await supabase.from("notifications").insert({
+            user_id:bizAcct.user_id,icon:"💰",
+            message:`Payment of ${(booking.payout_amount||0).toLocaleString()} NGN has been released to your account! Customer confirmed service complete. Payout processed next Friday.`,
+            type:"payment_received",
+            metadata:{booking_id:booking.id,amount:booking.payout_amount}
+          });
+          // Email business
+          sendEmail(bizAcct.email,"new_booking",{
+            biz_name:bizAcct.name||"Business",
+            customer_name:user?.name||"Customer",
+            service:req.listing_name||"Service",
+            amount:String(booking.gross_amount||0),
+            payout:String(booking.payout_amount||0),
+            paystack_ref:booking.paystack_ref||"",
+            request_ref:req.ref||""
+          });
+        }
+        // Email customer
+        sendEmail(user?.email,"booking_confirmed",{
+          name:user?.name||"Customer",
+          service:req.listing_name||"Service",
+          amount:String(booking.gross_amount||0),
+          ref:req.ref||""
+        });
+      }catch(e){console.warn("Post-confirm notifications failed:",e);}
+    })();
+
     setConfMsg({...confMsg,[req.id]:"✅ Confirmed! Payment released to business."});
     setConfLoading({...confLoading,[req.id]:false});
     setTimeout(()=>onRefresh(),2000);
@@ -1153,11 +1225,6 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
 
   return(
     <div style={{padding:"0 17px 80px"}}>
-
-      {/* DEBUG PANEL — remove after testing */}
-      <div style={{background:"rgba(200,134,26,0.1)",border:"1px solid rgba(200,134,26,0.2)",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:10,color:"#F5C550",fontWeight:700}}>
-        DEBUG: {requests.length} requests loaded · filter={filter} · filtered={filtered.length} · loading={String(reqLoading)}
-      </div>
 
       {/* ── PAYMENT MODAL ── */}
       {paymentModal&&(
