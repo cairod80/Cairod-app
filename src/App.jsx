@@ -1414,7 +1414,14 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
 // Two paths: Medical Tourism (coming to Egypt) + Daily Care (in Cairo)
 // ════════════════════════════════════════════════════════════════════════════
 function HealthScreen({user,lang,listings,setConnectListing}){
-  const[path,setPath]=useState("home"); // home | care | tourism | intake | package | clinics
+  const[path,setPath]=useState("home"); // home | care | tourism | intake | package | clinics | chat
+
+  // Case manager chat state
+  const[activeLead,setActiveLead]=useState(null);
+  const[caseMessages,setCaseMessages]=useState([]);
+  const[chatInput,setChatInput]=useState("");
+  const[chatSending,setChatSending]=useState(false);
+  const[userLeads,setUserLeads]=useState([]); // user's medical cases
 
   // Medical tourism intake state
   const[intakeStep,setIntakeStep]=useState(1);
@@ -1431,6 +1438,74 @@ function HealthScreen({user,lang,listings,setConnectListing}){
   // Cairo care state
   const[careFilter,setCareFilter]=useState("all");
   const[careSearch,setCareSearch]=useState("");
+
+  // Load user's medical leads and check for pending case ref
+  useEffect(()=>{
+    if(!user?.id) return;
+    // Load user's active medical cases
+    supabase.from("leads").select("*").eq("user_id",user.id).eq("listing_category","health")
+      .order("created_at",{ascending:false})
+      .then(({data})=>{if(data)setUserLeads(data);});
+
+    // Check if navigated here from a notification
+    if(window._pendingCaseRef){
+      const ref=window._pendingCaseRef;
+      window._pendingCaseRef=null;
+      openCaseChat(ref);
+    }
+  },[user?.id]);
+
+  // Also watch for pendingCaseRef when path changes to health
+  useEffect(()=>{
+    if(window._pendingCaseRef){
+      const ref=window._pendingCaseRef;
+      window._pendingCaseRef=null;
+      openCaseChat(ref);
+    }
+  },[path]);
+
+  const openCaseChat=async(ref)=>{
+    if(!ref) return;
+    // Find lead by ref or id
+    const{data:leads}=await supabase.from("leads")
+      .select("*").or(`ref.eq.${ref},id.eq.${ref}`).limit(1);
+    if(leads?.[0]){
+      setActiveLead(leads[0]);
+      loadCaseMessages(leads[0]);
+      setPath("chat");
+    }
+  };
+
+  const loadCaseMessages=async(lead)=>{
+    const ref=lead.ref||lead.id;
+    const{data}=await supabase.from("case_messages")
+      .select("*").eq("case_ref",ref).order("created_at",{ascending:true});
+    setCaseMessages(data||[]);
+    // Mark as read
+    await supabase.from("case_messages").update({read_by_patient:true})
+      .eq("case_ref",ref).eq("sender_role","case_manager");
+  };
+
+  const sendCaseMessage=async()=>{
+    if(!chatInput.trim()||!activeLead||chatSending) return;
+    setChatSending(true);
+    const ref=activeLead.ref||activeLead.id;
+    const{data}=await supabase.from("case_messages").insert({
+      case_ref:ref,lead_id:activeLead.id,
+      sender_id:user.id,sender_name:user.name||"Patient",
+      sender_role:"patient",message:chatInput.trim(),
+      read_by_patient:true,read_by_manager:false,
+    }).select().single();
+    if(data) setCaseMessages(p=>[...p,data]);
+    setChatInput("");setChatSending(false);
+    // Notify admin
+    (async()=>{try{await supabase.from("notifications").insert({
+      user_id:"00000000-0000-0000-0000-000000000000",
+      icon:"💬",
+      message:`Patient replied on case ${ref}`,
+      type:"case_message",metadata:{case_ref:ref}
+    });}catch{}})();
+  };
 
   const PROCEDURES=[
     {id:"cardiac",    icon:"❤️",  label:"Cardiac Surgery",      sub:"Angioplasty, bypass, valve repair",         price:"$2,000–$8,000"},
@@ -1491,6 +1566,73 @@ Notes: ${notes}`;
   };
 
   // ── HOME ──────────────────────────────────────────────────────────────────
+  // ── CASE MANAGER CHAT PATH ──────────────────────────────────────────────────
+  if(path==="chat"&&activeLead) return(
+    <div style={{padding:"0 17px 80px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 0",borderBottom:"1px solid var(--bdr)",marginBottom:16}}>
+        <button onClick={()=>{setPath("home");setActiveLead(null);setCaseMessages([]);}}
+          style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"var(--sub)"}}>←</button>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:800}}>
+            Case Manager Chat
+          </div>
+          <div style={{fontSize:10,color:"var(--sub)"}}>
+            Ref: {activeLead.ref||activeLead.id?.slice(0,8)} · {activeLead.status||"Active"}
+          </div>
+        </div>
+        <span style={{fontSize:10,padding:"3px 10px",borderRadius:10,background:"rgba(77,217,148,0.1)",color:"var(--g)",fontWeight:700}}>🏥 Medical Case</span>
+      </div>
+
+      {/* Messages */}
+      <div style={{marginBottom:16,maxHeight:"55vh",overflowY:"auto"}}>
+        {caseMessages.length===0&&(
+          <div style={{textAlign:"center",padding:"40px 0",color:"var(--sub)",fontSize:13}}>
+            Your case manager will message you here.<br/>
+            You can also send them a message below.
+          </div>
+        )}
+        {caseMessages.map((msg,i)=>{
+          const isMe=msg.sender_role==="patient";
+          return(
+            <div key={msg.id||i} style={{display:"flex",justifyContent:isMe?"flex-end":"flex-start",marginBottom:10}}>
+              <div style={{maxWidth:"78%"}}>
+                {!isMe&&<div style={{fontSize:9,fontWeight:700,color:"var(--g)",marginBottom:2}}>
+                  👤 {msg.sender_name||"Case Manager"}
+                </div>}
+                <div style={{
+                  background:isMe?"var(--g)":msg.sender_role==="platform"?"rgba(200,134,26,0.08)":"rgba(255,255,255,0.07)",
+                  border:msg.sender_role==="platform"?"1px solid rgba(200,134,26,0.2)":"none",
+                  color:msg.sender_role==="platform"?"#F5C550":"var(--txt)",
+                  padding:"9px 13px",
+                  borderRadius:isMe?"12px 12px 4px 12px":"12px 12px 12px 4px",
+                  fontSize:13,lineHeight:1.55,fontStyle:msg.sender_role==="platform"?"italic":"normal",
+                  whiteSpace:"pre-wrap"
+                }}>
+                  {msg.message||msg.content}
+                </div>
+                <div style={{fontSize:9,color:"var(--sub)",marginTop:2,textAlign:isMe?"right":"left"}}>
+                  {new Date(msg.created_at).toLocaleString("en-GB",{hour:"2-digit",minute:"2-digit",day:"numeric",month:"short"})}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Input */}
+      <div style={{display:"flex",gap:10,position:"sticky",bottom:80}}>
+        <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendCaseMessage();}}}
+          placeholder="Message your case manager…" rows={2}
+          style={{flex:1,padding:"10px 13px",borderRadius:12,border:"1px solid var(--bdr)",background:"var(--card)",color:"var(--txt)",fontFamily:"'Outfit',sans-serif",fontSize:13,resize:"none",outline:"none"}}/>
+        <button onClick={sendCaseMessage} disabled={!chatInput.trim()||chatSending}
+          style={{padding:"0 18px",borderRadius:12,border:"none",background:chatInput.trim()?"var(--g)":"rgba(255,255,255,0.1)",color:chatInput.trim()?"white":"var(--sub)",fontWeight:800,fontSize:14,cursor:"pointer",flexShrink:0,fontFamily:"'Outfit',sans-serif"}}>
+          {chatSending?"…":"→"}
+        </button>
+      </div>
+    </div>
+  );
+
   if(path==="home") return(
     <div style={{padding:"0 17px 80px"}}>
       {/* Hero */}
