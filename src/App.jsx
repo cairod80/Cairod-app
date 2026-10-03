@@ -1413,7 +1413,7 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
 // HEALTH SCREEN v2 — Medical Concierge + Cairo Care
 // Two paths: Medical Tourism (coming to Egypt) + Daily Care (in Cairo)
 // ════════════════════════════════════════════════════════════════════════════
-function HealthScreen({user,lang,listings,setConnectListing}){
+function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onClearPendingCaseRef}){
   const[path,setPath]=useState("home"); // home | care | tourism | intake | package | clinics | chat
 
   // Case manager chat state
@@ -1439,34 +1439,51 @@ function HealthScreen({user,lang,listings,setConnectListing}){
   const[careFilter,setCareFilter]=useState("all");
   const[careSearch,setCareSearch]=useState("");
 
-  // Load user's medical leads and check for pending case ref
+  // Load user's medical leads on mount
   useEffect(()=>{
     if(!user?.id) return;
-    // Load user's active medical cases
     supabase.from("leads").select("*").eq("user_id",user.id).eq("listing_category","health")
       .order("created_at",{ascending:false})
       .then(({data})=>{if(data)setUserLeads(data);});
-
-    // Check if navigated here from a notification
-    if(window._pendingCaseRef){
-      const ref=window._pendingCaseRef;
-      window._pendingCaseRef=null;
-      openCaseChat(ref);
-    }
   },[user?.id]);
 
-  // Also watch for pendingCaseRef when path changes to health
+  // Watch pendingCaseRef prop — fires every time a notification is tapped
   useEffect(()=>{
-    if(window._pendingCaseRef){
-      const ref=window._pendingCaseRef;
-      window._pendingCaseRef=null;
-      openCaseChat(ref);
+    if(!pendingCaseRef) return;
+    onClearPendingCaseRef&&onClearPendingCaseRef();
+    if(pendingCaseRef==="__open__"){
+      // No specific ref — just open the first active case
+      if(userLeads.length>0){
+        setActiveLead(userLeads[0]);
+        loadCaseMessages(userLeads[0]);
+        setPath("chat");
+      }
+    } else {
+      openCaseChat(pendingCaseRef);
     }
-  },[path]);
+  },[pendingCaseRef]);
+
+  // If __open__ was set but userLeads wasn't loaded yet, retry when leads load
+  useEffect(()=>{
+    if(pendingCaseRef==="__open__"&&userLeads.length>0){
+      onClearPendingCaseRef&&onClearPendingCaseRef();
+      setActiveLead(userLeads[0]);
+      loadCaseMessages(userLeads[0]);
+      setPath("chat");
+    }
+  },[userLeads]);
 
   const openCaseChat=async(ref)=>{
     if(!ref) return;
-    // Find lead by ref or id
+    // First check already-loaded leads
+    const local=userLeads.find(l=>l.ref===ref||l.id===ref);
+    if(local){
+      setActiveLead(local);
+      loadCaseMessages(local);
+      setPath("chat");
+      return;
+    }
+    // Fetch from DB
     const{data:leads}=await supabase.from("leads")
       .select("*").or(`ref.eq.${ref},id.eq.${ref}`).limit(1);
     if(leads?.[0]){
@@ -4185,6 +4202,7 @@ function MainApp({user,onLogout}){
   const[reqLoading,setReqLoading]=useState(false);
   const[reqRefresh,setReqRefresh]=useState(0);
   const[showRequests,setShowRequests]=useState(false);
+  const[pendingCaseRef,setPendingCaseRef]=useState(null);
 
   // Reload whenever tab switches to requests OR refresh counter bumps
   useEffect(()=>{
@@ -4471,9 +4489,8 @@ function MainApp({user,onLogout}){
                 setReqRefresh(n=>n+1);
               }}
               onGoToHealth={(caseRef)=>{
+                setPendingCaseRef(caseRef||"__open__");
                 setTab("health");
-                // Store case ref so health screen can open the chat
-                window._pendingCaseRef=caseRef;
               }}
               onGoToChat={(roomId)=>{
                 setTab("groups");
@@ -4993,7 +5010,7 @@ function MainApp({user,onLogout}){
 
         {tab==="chat"&&<div style={{padding:"0 17px"}}><ChatScreen user={user} lang={lang}/></div>}
         {tab==="study"&&<StudyRoom user={user} lang={lang}/>}
-        {tab==="health"&&<HealthScreen user={user} lang={lang} listings={listings} setConnectListing={setConnectListing}/>}
+        {tab==="health"&&<HealthScreen user={user} lang={lang} listings={listings} setConnectListing={setConnectListing} pendingCaseRef={pendingCaseRef} onClearPendingCaseRef={()=>setPendingCaseRef(null)}/>}
         {tab==="requests"&&<MyRequestsScreen user={user} lang={lang} requests={myRequests} loading={reqLoading} onGoToChat={(roomId)=>{setTab("groups");setTimeout(()=>{window._pendingRoomId=roomId;},200);}} onRefresh={()=>{
           (async()=>{
           const{data:reqs}=await supabase.from("service_requests").select("*").eq("user_id",user?.id).order("created_at",{ascending:false});
