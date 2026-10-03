@@ -4097,8 +4097,15 @@ function MainApp({user,onLogout}){
   // ── LOAD ALL DATA + USER-SPECIFIC STATE ON STARTUP ────────────────────────
   useEffect(()=>{
     // Public data — listings, groups, Q&A, universities
-    supabase.from("listings").select("*").eq("status","active").order("rating",{ascending:false})
-      .then(({data})=>{ if(data&&data.length>0) setListings(data.map(l=>({...l,cat:l.category,rc:l.review_count||0,top:l.top||false,african:l.african_owned||false,icon:l.icon||"🏢",price:l.price||"$$",verified:l.verified||false,images:l.images||[]}))); });
+    supabase.from("listings").select("*,business_accounts!business_account_id(images)").eq("status","active").order("rating",{ascending:false})
+      .then(({data})=>{ if(data&&data.length>0) setListings(data.map(l=>{
+        // listings.images is text[], business_accounts.images is jsonb
+        const listingImgs=Array.isArray(l.images)&&l.images.length>0?l.images:[];
+        const baRaw=Array.isArray(l.business_accounts)?l.business_accounts[0]:l.business_accounts;
+        const baImgs=Array.isArray(baRaw?.images)&&baRaw.images.length>0?baRaw.images:[];
+        const finalImgs=listingImgs.length>0?listingImgs:baImgs;
+        return{...l,cat:l.category,rc:l.review_count||0,top:l.top||false,african:l.african_owned||false,icon:l.icon||"🏢",price:l.price||"$$",verified:l.verified||false,images:finalImgs};
+      })); });
 
     if(user?.id){
       // Load requests first, then enrich with quotes separately
