@@ -27,6 +27,20 @@ const sendEmail=async(to,template,data)=>{
 
 
 const PAYSTACK_PUBLIC_KEY = process.env.REACT_APP_PAYSTACK_KEY || "pk_live_ee12723c71f0bf534bed567b1423cf2b4c479c3c";
+// ── FILE UPLOAD FOR CHAT ──────────────────────────────────────────────────────
+const uploadChatFile=async(file,folder)=>{
+  if(!file) return null;
+  const MAX=20*1024*1024; // 20MB
+  if(file.size>MAX){alert("File too large. Max 20MB.");return null;}
+  const ext=file.name.split(".").pop().toLowerCase();
+  const isImage=["jpg","jpeg","png","gif","webp","heic"].includes(ext);
+  const fp=`chat/${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`;
+  const{data,error}=await supabase.storage.from("chat-files").upload(fp,file,{upsert:false});
+  if(error){console.warn("Upload error:",error.message);alert("Upload failed: "+error.message);return null;}
+  const{data:urlData}=supabase.storage.from("chat-files").getPublicUrl(fp);
+  return{url:urlData.publicUrl,name:file.name,size:file.size,type:file.type,isImage,path:fp};
+};
+
 const PAYSTACK_CURRENCY   = "NGN"; // Change to "EGP" when Xairod Paystack is ready
 
 // ── PAYSTACK PAYMENT HOOK ─────────────────────────────────────────────────────
@@ -584,6 +598,7 @@ function filterContent(text){
 }
 
 function DirectRoomScreen({room,user,onBack,onGoToRequests}){
+  const[pendingFile,setPendingFile]=useState(null);
   const[messages,setMessages]=useState([]);
   const[input,setInput]=useState("");
   const[sending,setSending]=useState(false);
@@ -1421,6 +1436,7 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
   const[caseMessages,setCaseMessages]=useState([]);
   const[chatInput,setChatInput]=useState("");
   const[chatSending,setChatSending]=useState(false);
+  const[casePendingFile,setCasePendingFile]=useState(null);
   const[userLeads,setUserLeads]=useState([]); // user's medical cases
 
   // Medical tourism intake state
@@ -1533,19 +1549,23 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
     if(!chatInput.trim()||!activeLead||chatSending) return;
     setChatSending(true);
     const ref=activeLead.ref||activeLead.id;
+    const fileData=casePendingFile;
     const{data,error}=await supabase.from("case_messages").insert({
       case_ref:ref,
       lead_id:activeLead.id!==ref?activeLead.id:null,
       sender_id:user.id,
       sender_name:user.name||user.email?.split("@")[0]||"Patient",
       sender_role:"patient",
-      message:chatInput.trim(),
+      message:fileData?fileData.name:(chatInput.trim()),
+      message_type:fileData?(fileData.isImage?"image":"file"):"text",
+      file_url:fileData?fileData.url:null,
+      file_name:fileData?fileData.name:null,
       read_by_patient:true,
       read_by_manager:false,
     }).select().single();
     if(error) console.warn("send case msg error:",error.message);
     if(data) setCaseMessages(p=>[...p,data]);
-    setChatInput("");setChatSending(false);
+    setChatInput("");setCasePendingFile(null);setChatSending(false);
   };
 
   const PROCEDURES=[
@@ -1649,7 +1669,25 @@ Notes: ${notes}`;
                   fontSize:13,lineHeight:1.55,fontStyle:msg.sender_role==="platform"?"italic":"normal",
                   whiteSpace:"pre-wrap"
                 }}>
-                  {msg.message||msg.content}
+                  {(msg.message_type==="image"||msg.message_type==="file")&&msg.file_url?(
+                  <div>
+                    {msg.message_type==="image"?(
+                      <img src={msg.file_url} alt={msg.file_name||"image"}
+                        style={{maxWidth:"100%",maxHeight:260,borderRadius:8,display:"block",cursor:"pointer",marginBottom:4}}
+                        onClick={()=>window.open(msg.file_url,"_blank")}/>
+                    ):(
+                      <a href={msg.file_url} target="_blank" rel="noreferrer"
+                        style={{display:"flex",gap:8,alignItems:"center",padding:"6px 8px",background:"rgba(255,255,255,0.06)",borderRadius:8,textDecoration:"none",marginBottom:4}}>
+                        <span>📄</span>
+                        <div>
+                          <div style={{fontSize:11,fontWeight:700,color:"var(--g)"}}>{msg.file_name||"Document"}</div>
+                          <div style={{fontSize:9,color:"var(--sub)"}}>Tap to open</div>
+                        </div>
+                      </a>
+                    )}
+                    {msg.message&&msg.message!==msg.file_name&&<div>{msg.message}</div>}
+                  </div>
+                ):(msg.message||msg.content)}
                 </div>
                 <div style={{fontSize:9,color:"var(--sub)",marginTop:2,textAlign:isMe?"right":"left"}}>
                   {new Date(msg.created_at).toLocaleString("en-GB",{hour:"2-digit",minute:"2-digit",day:"numeric",month:"short"})}
@@ -1661,15 +1699,35 @@ Notes: ${notes}`;
       </div>
 
       {/* Input */}
-      <div style={{display:"flex",gap:10,position:"sticky",bottom:80}}>
-        <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
-          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendCaseMessage();}}}
-          placeholder="Message your case manager…" rows={2}
-          style={{flex:1,padding:"10px 13px",borderRadius:12,border:"1px solid var(--bdr)",background:"var(--card)",color:"var(--txt)",fontFamily:"'Outfit',sans-serif",fontSize:13,resize:"none",outline:"none"}}/>
-        <button onClick={sendCaseMessage} disabled={!chatInput.trim()||chatSending}
-          style={{padding:"0 18px",borderRadius:12,border:"none",background:chatInput.trim()?"var(--g)":"rgba(255,255,255,0.1)",color:chatInput.trim()?"white":"var(--sub)",fontWeight:800,fontSize:14,cursor:"pointer",flexShrink:0,fontFamily:"'Outfit',sans-serif"}}>
-          {chatSending?"…":"→"}
-        </button>
+      <div style={{position:"sticky",bottom:80,background:"var(--bg)"}}>
+        {casePendingFile&&(
+          <div style={{padding:"6px 0",display:"flex",gap:8,alignItems:"center",marginBottom:4}}>
+            <div style={{background:"rgba(77,217,148,0.08)",border:"1px solid rgba(77,217,148,0.15)",borderRadius:8,padding:"6px 10px",display:"flex",gap:8,alignItems:"center",flex:1}}>
+              <span>{casePendingFile.isImage?"🖼️":"📄"}</span>
+              <div style={{flex:1,fontSize:11,fontWeight:700,color:"var(--txt)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{casePendingFile.name}</div>
+              <button onClick={()=>setCasePendingFile(null)} style={{background:"none",border:"none",color:"var(--sub)",cursor:"pointer",fontSize:16}}>×</button>
+            </div>
+          </div>
+        )}
+        <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+          <label style={{width:36,height:36,borderRadius:"50%",border:"1px solid var(--bdr)",background:"rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+            <input type="file" accept="image/*,.pdf,.doc,.docx,.txt" style={{display:"none"}} onChange={async e=>{
+              const file=e.target.files[0];if(!file)return;
+              const res=await uploadChatFile(file,user?.id||"anon");
+              if(res) setCasePendingFile(res);
+              e.target.value="";
+            }}/>
+            <span style={{fontSize:16}}>📎</span>
+          </label>
+          <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendCaseMessage();}}}
+            placeholder="Message your case manager…" rows={2}
+            style={{flex:1,padding:"10px 13px",borderRadius:12,border:"1px solid var(--bdr)",background:"var(--card)",color:"var(--txt)",fontFamily:"'Outfit',sans-serif",fontSize:13,resize:"none",outline:"none"}}/>
+          <button onClick={sendCaseMessage} disabled={(!chatInput.trim()&&!casePendingFile)||chatSending}
+            style={{padding:"0 16px",height:42,borderRadius:12,border:"none",background:(chatInput.trim()||casePendingFile)?"var(--g)":"rgba(255,255,255,0.1)",color:(chatInput.trim()||casePendingFile)?"white":"var(--sub)",fontWeight:800,fontSize:14,cursor:"pointer",flexShrink:0,fontFamily:"'Outfit',sans-serif"}}>
+            {chatSending?"…":"→"}
+          </button>
+        </div>
       </div>
     </div>
   );
