@@ -1442,9 +1442,28 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
   // Load user's medical leads on mount
   useEffect(()=>{
     if(!user?.id) return;
-    supabase.from("leads").select("*").eq("user_id",user.id).eq("listing_category","health")
+    // Load ALL leads for this user — no category filter in case listing_category varies
+    supabase.from("leads").select("*").eq("user_id",user.id)
       .order("created_at",{ascending:false})
-      .then(({data})=>{if(data)setUserLeads(data);});
+      .then(({data,error})=>{
+        if(error) console.warn("leads load error:",error.message);
+        if(data&&data.length>0) setUserLeads(data);
+        else{
+          // Fallback: find leads by checking case_messages for this user's notifications
+          supabase.from("notifications")
+            .select("metadata").eq("user_id",user.id).eq("type","case_message")
+            .order("created_at",{ascending:false}).limit(5)
+            .then(async({data:notifs})=>{
+              if(!notifs?.length) return;
+              const refs=[...new Set(notifs.map(n=>n.metadata?.case_ref).filter(Boolean))];
+              if(!refs.length) return;
+              // Load leads matching these refs
+              const{data:foundLeads}=await supabase.from("leads")
+                .select("*").in("ref",refs).limit(5);
+              if(foundLeads?.length) setUserLeads(foundLeads);
+            });
+        }
+      });
   },[user?.id]);
 
   // Watch pendingCaseRef prop — fires every time a notification is tapped
@@ -1475,30 +1494,37 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
 
   const openCaseChat=async(ref)=>{
     if(!ref) return;
-    // First check already-loaded leads
+    // Load messages directly by case_ref — no lead lookup needed
+    const{data:msgs,error}=await supabase.from("case_messages")
+      .select("*").eq("case_ref",ref).order("created_at",{ascending:true});
+    if(error) console.warn("case_messages error:",error.message);
+    setCaseMessages(msgs||[]);
+
+    // Mark messages as read
+    await supabase.from("case_messages").update({read_by_patient:true})
+      .eq("case_ref",ref).eq("sender_role","case_manager");
+
+    // Also try to find the lead for context (non-blocking)
     const local=userLeads.find(l=>l.ref===ref||l.id===ref);
     if(local){
       setActiveLead(local);
-      loadCaseMessages(local);
-      setPath("chat");
-      return;
+    } else {
+      // Create a minimal lead object so chat title shows something
+      setActiveLead({ref,id:ref,status:"active"});
+      // Try DB fetch in background
+      supabase.from("leads").select("*").eq("ref",ref).limit(1)
+        .then(({data})=>{if(data?.[0]) setActiveLead(data[0]);});
     }
-    // Fetch from DB
-    const{data:leads}=await supabase.from("leads")
-      .select("*").or(`ref.eq.${ref},id.eq.${ref}`).limit(1);
-    if(leads?.[0]){
-      setActiveLead(leads[0]);
-      loadCaseMessages(leads[0]);
-      setPath("chat");
-    }
+    setPath("chat");
   };
 
   const loadCaseMessages=async(lead)=>{
     const ref=lead.ref||lead.id;
-    const{data}=await supabase.from("case_messages")
+    if(!ref) return;
+    const{data,error}=await supabase.from("case_messages")
       .select("*").eq("case_ref",ref).order("created_at",{ascending:true});
+    if(error) console.warn("loadCaseMessages error:",error.message);
     setCaseMessages(data||[]);
-    // Mark as read
     await supabase.from("case_messages").update({read_by_patient:true})
       .eq("case_ref",ref).eq("sender_role","case_manager");
   };
@@ -1507,21 +1533,19 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
     if(!chatInput.trim()||!activeLead||chatSending) return;
     setChatSending(true);
     const ref=activeLead.ref||activeLead.id;
-    const{data}=await supabase.from("case_messages").insert({
-      case_ref:ref,lead_id:activeLead.id,
-      sender_id:user.id,sender_name:user.name||"Patient",
-      sender_role:"patient",message:chatInput.trim(),
-      read_by_patient:true,read_by_manager:false,
+    const{data,error}=await supabase.from("case_messages").insert({
+      case_ref:ref,
+      lead_id:activeLead.id!==ref?activeLead.id:null,
+      sender_id:user.id,
+      sender_name:user.name||user.email?.split("@")[0]||"Patient",
+      sender_role:"patient",
+      message:chatInput.trim(),
+      read_by_patient:true,
+      read_by_manager:false,
     }).select().single();
+    if(error) console.warn("send case msg error:",error.message);
     if(data) setCaseMessages(p=>[...p,data]);
     setChatInput("");setChatSending(false);
-    // Notify admin
-    (async()=>{try{await supabase.from("notifications").insert({
-      user_id:"00000000-0000-0000-0000-000000000000",
-      icon:"💬",
-      message:`Patient replied on case ${ref}`,
-      type:"case_message",metadata:{case_ref:ref}
-    });}catch{}})();
   };
 
   const PROCEDURES=[
