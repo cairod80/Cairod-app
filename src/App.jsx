@@ -27,18 +27,30 @@ const sendEmail=async(to,template,data)=>{
 
 
 const PAYSTACK_PUBLIC_KEY = process.env.REACT_APP_PAYSTACK_KEY || "pk_live_ee12723c71f0bf534bed567b1423cf2b4c479c3c";
-// ── FILE UPLOAD FOR CHAT ──────────────────────────────────────────────────────
+// ── FILE ATTACHMENT FOR CHAT ─────────────────────────────────────────────────
+const fmtSize=b=>b>1048576?(b/1048576).toFixed(1)+"MB":(b/1024).toFixed(0)+"KB";
+const isImgFile=f=>{const e=(f.name||"").split(".").pop().toLowerCase();return["jpg","jpeg","png","gif","webp","heic","avif"].includes(e)||f.type?.startsWith("image/");};
+
+// Read file locally for preview before uploading
+const readFilePreview=file=>new Promise(resolve=>{
+  if(isImgFile(file)){
+    const r=new FileReader();
+    r.onload=e=>resolve(e.target.result);
+    r.readAsDataURL(file);
+  } else resolve(null);
+});
+
+// Upload to Supabase storage
 const uploadChatFile=async(file,folder)=>{
   if(!file) return null;
-  const MAX=20*1024*1024; // 20MB
-  if(file.size>MAX){alert("File too large. Max 20MB.");return null;}
-  const ext=file.name.split(".").pop().toLowerCase();
-  const isImage=["jpg","jpeg","png","gif","webp","heic"].includes(ext);
-  const fp=`chat/${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`;
-  const{data,error}=await supabase.storage.from("chat-files").upload(fp,file,{upsert:false});
-  if(error){console.warn("Upload error:",error.message);alert("Upload failed: "+error.message);return null;}
-  const{data:urlData}=supabase.storage.from("chat-files").getPublicUrl(fp);
-  return{url:urlData.publicUrl,name:file.name,size:file.size,type:file.type,isImage,path:fp};
+  if(file.size>20*1024*1024){alert("Max file size is 20MB.");return null;}
+  const ext=(file.name||"file").split(".").pop();
+  const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+  const fp=`chat/${folder}/${Date.now()}_${safeName}`;
+  const{error}=await supabase.storage.from("chat-files").upload(fp,file,{upsert:false,contentType:file.type});
+  if(error){alert("Upload failed: "+error.message);return null;}
+  const{data:ud}=supabase.storage.from("chat-files").getPublicUrl(fp);
+  return{url:ud.publicUrl,name:file.name,size:file.size,mimeType:file.type,isImage:isImgFile(file),path:fp};
 };
 
 const PAYSTACK_CURRENCY   = "NGN"; // Change to "EGP" when Xairod Paystack is ready
@@ -597,8 +609,55 @@ function filterContent(text){
   return {blocked:false};
 }
 
+
+// ── REUSABLE FILE PREVIEW CARD ───────────────────────────────────────────────
+function FilePreviewCard({file,onRemove,uploading}){
+  if(!file) return null;
+  return(
+    <div style={{margin:"6px 0",background:"rgba(77,217,148,0.06)",border:"1.5px solid rgba(77,217,148,0.15)",borderRadius:10,padding:10,display:"flex",gap:10,alignItems:"center"}}>
+      {file.preview?(
+        <img src={file.preview} alt="" style={{width:52,height:52,objectFit:"cover",borderRadius:7,flexShrink:0}}/>
+      ):(
+        <div style={{width:52,height:52,background:"rgba(255,255,255,0.06)",borderRadius:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>
+          {file.mimeType?.includes("pdf")?"📋":file.mimeType?.includes("word")?"📝":"📄"}
+        </div>
+      )}
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12,fontWeight:700,color:"var(--txt)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.name}</div>
+        <div style={{fontSize:10,color:"var(--sub)",marginTop:2}}>{fmtSize(file.size)} · {file.mimeType||"file"}</div>
+        {uploading&&<div style={{fontSize:10,color:"#F5C550",marginTop:2}}>⏳ Uploading…</div>}
+        {file.uploaded&&<div style={{fontSize:10,color:"var(--g)",marginTop:2}}>✓ Ready to send</div>}
+      </div>
+      {!uploading&&<button onClick={onRemove} style={{background:"none",border:"none",color:"var(--sub)",cursor:"pointer",fontSize:20,flexShrink:0,lineHeight:1}}>×</button>}
+    </div>
+  );
+}
+
+// ── INLINE FILE/IMAGE RENDERER FOR MESSAGES ───────────────────────────────────
+function MsgFileRender({meta}){
+  if(!meta?.url) return null;
+  if(meta.isImage) return(
+    <div style={{marginBottom:4}}>
+      <img src={meta.url} alt={meta.name||"image"} onClick={()=>window.open(meta.url,"_blank")}
+        style={{maxWidth:"100%",maxHeight:280,borderRadius:8,display:"block",cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)"}}/>
+      <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",marginTop:3}}>{meta.name} · {meta.size?fmtSize(meta.size):""}</div>
+    </div>
+  );
+  return(
+    <a href={meta.url} target="_blank" rel="noreferrer"
+      style={{display:"flex",gap:10,alignItems:"center",padding:"8px 11px",background:"rgba(255,255,255,0.06)",borderRadius:9,textDecoration:"none",marginBottom:4,border:"1px solid rgba(255,255,255,0.08)"}}>
+      <span style={{fontSize:24}}>{meta.mimeType?.includes("pdf")?"📋":meta.mimeType?.includes("word")?"📝":"📄"}</span>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12,fontWeight:700,color:"var(--g)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{meta.name||"Document"}</div>
+        <div style={{fontSize:10,color:"var(--sub)"}}>{meta.size?fmtSize(meta.size)+" · ":""} Tap to open</div>
+      </div>
+      <span style={{fontSize:16,color:"var(--sub)"}}>↗</span>
+    </a>
+  );
+}
 function DirectRoomScreen({room,user,onBack,onGoToRequests}){
-  const[pendingFile,setPendingFile]=useState(null);
+  const[attachedFile,setAttachedFile]=useState(null); // {file,preview,uploaded,url,...}
+  const[uploading,setUploading]=useState(false);
   const[messages,setMessages]=useState([]);
   const[input,setInput]=useState("");
   const[sending,setSending]=useState(false);
@@ -1436,7 +1495,8 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
   const[caseMessages,setCaseMessages]=useState([]);
   const[chatInput,setChatInput]=useState("");
   const[chatSending,setChatSending]=useState(false);
-  const[casePendingFile,setCasePendingFile]=useState(null);
+  const[caseAttachedFile,setCaseAttachedFile]=useState(null);
+  const[caseUploading,setCaseUploading]=useState(false);
   const[userLeads,setUserLeads]=useState([]); // user's medical cases
 
   // Medical tourism intake state
@@ -1549,23 +1609,23 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
     if(!chatInput.trim()||!activeLead||chatSending) return;
     setChatSending(true);
     const ref=activeLead.ref||activeLead.id;
-    const fileData=casePendingFile;
+    const af=caseAttachedFile;
     const{data,error}=await supabase.from("case_messages").insert({
       case_ref:ref,
       lead_id:activeLead.id!==ref?activeLead.id:null,
       sender_id:user.id,
       sender_name:user.name||user.email?.split("@")[0]||"Patient",
       sender_role:"patient",
-      message:fileData?fileData.name:(chatInput.trim()),
-      message_type:fileData?(fileData.isImage?"image":"file"):"text",
-      file_url:fileData?fileData.url:null,
-      file_name:fileData?fileData.name:null,
+      message:af?af.name:(chatInput.trim()),
+      message_type:af?(af.isImage?"image":"file"):"text",
+      file_url:af?af.url:null,
+      file_name:af?af.name:null,
       read_by_patient:true,
       read_by_manager:false,
     }).select().single();
     if(error) console.warn("send case msg error:",error.message);
     if(data) setCaseMessages(p=>[...p,data]);
-    setChatInput("");setCasePendingFile(null);setChatSending(false);
+    setChatInput("");setCaseAttachedFile(null);setChatSending(false);
   };
 
   const PROCEDURES=[
@@ -1669,25 +1729,9 @@ Notes: ${notes}`;
                   fontSize:13,lineHeight:1.55,fontStyle:msg.sender_role==="platform"?"italic":"normal",
                   whiteSpace:"pre-wrap"
                 }}>
-                  {(msg.message_type==="image"||msg.message_type==="file")&&msg.file_url?(
-                  <div>
-                    {msg.message_type==="image"?(
-                      <img src={msg.file_url} alt={msg.file_name||"image"}
-                        style={{maxWidth:"100%",maxHeight:260,borderRadius:8,display:"block",cursor:"pointer",marginBottom:4}}
-                        onClick={()=>window.open(msg.file_url,"_blank")}/>
-                    ):(
-                      <a href={msg.file_url} target="_blank" rel="noreferrer"
-                        style={{display:"flex",gap:8,alignItems:"center",padding:"6px 8px",background:"rgba(255,255,255,0.06)",borderRadius:8,textDecoration:"none",marginBottom:4}}>
-                        <span>📄</span>
-                        <div>
-                          <div style={{fontSize:11,fontWeight:700,color:"var(--g)"}}>{msg.file_name||"Document"}</div>
-                          <div style={{fontSize:9,color:"var(--sub)"}}>Tap to open</div>
-                        </div>
-                      </a>
-                    )}
-                    {msg.message&&msg.message!==msg.file_name&&<div>{msg.message}</div>}
-                  </div>
-                ):(msg.message||msg.content)}
+                  {(msg.message_type==="image"||msg.message_type==="file")&&msg.file_url
+                  ?<MsgFileRender meta={{url:msg.file_url,name:msg.file_name,isImage:msg.message_type==="image"}}/>
+                  :(msg.message||msg.content)}
                 </div>
                 <div style={{fontSize:9,color:"var(--sub)",marginTop:2,textAlign:isMe?"right":"left"}}>
                   {new Date(msg.created_at).toLocaleString("en-GB",{hour:"2-digit",minute:"2-digit",day:"numeric",month:"short"})}
@@ -1700,21 +1744,18 @@ Notes: ${notes}`;
 
       {/* Input */}
       <div style={{position:"sticky",bottom:80,background:"var(--bg)"}}>
-        {casePendingFile&&(
-          <div style={{padding:"6px 0",display:"flex",gap:8,alignItems:"center",marginBottom:4}}>
-            <div style={{background:"rgba(77,217,148,0.08)",border:"1px solid rgba(77,217,148,0.15)",borderRadius:8,padding:"6px 10px",display:"flex",gap:8,alignItems:"center",flex:1}}>
-              <span>{casePendingFile.isImage?"🖼️":"📄"}</span>
-              <div style={{flex:1,fontSize:11,fontWeight:700,color:"var(--txt)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{casePendingFile.name}</div>
-              <button onClick={()=>setCasePendingFile(null)} style={{background:"none",border:"none",color:"var(--sub)",cursor:"pointer",fontSize:16}}>×</button>
-            </div>
-          </div>
-        )}
+        {caseAttachedFile&&<FilePreviewCard file={caseAttachedFile} uploading={caseUploading} onRemove={()=>{setCaseAttachedFile(null);setCaseUploading(false);}}/>}
         <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
           <label style={{width:36,height:36,borderRadius:"50%",border:"1px solid var(--bdr)",background:"rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
             <input type="file" accept="image/*,.pdf,.doc,.docx,.txt" style={{display:"none"}} onChange={async e=>{
               const file=e.target.files[0];if(!file)return;
+              const preview=await readFilePreview(file);
+              setCaseAttachedFile({file,name:file.name,size:file.size,mimeType:file.type,isImage:isImgFile(file),preview,uploaded:false});
+              setCaseUploading(true);
               const res=await uploadChatFile(file,user?.id||"anon");
-              if(res) setCasePendingFile(res);
+              if(res) setCaseAttachedFile(p=>({...p,...res,uploaded:true,preview}));
+              else setCaseAttachedFile(null);
+              setCaseUploading(false);
               e.target.value="";
             }}/>
             <span style={{fontSize:16}}>📎</span>
@@ -1723,8 +1764,8 @@ Notes: ${notes}`;
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendCaseMessage();}}}
             placeholder="Message your case manager…" rows={2}
             style={{flex:1,padding:"10px 13px",borderRadius:12,border:"1px solid var(--bdr)",background:"var(--card)",color:"var(--txt)",fontFamily:"'Outfit',sans-serif",fontSize:13,resize:"none",outline:"none"}}/>
-          <button onClick={sendCaseMessage} disabled={(!chatInput.trim()&&!casePendingFile)||chatSending}
-            style={{padding:"0 16px",height:42,borderRadius:12,border:"none",background:(chatInput.trim()||casePendingFile)?"var(--g)":"rgba(255,255,255,0.1)",color:(chatInput.trim()||casePendingFile)?"white":"var(--sub)",fontWeight:800,fontSize:14,cursor:"pointer",flexShrink:0,fontFamily:"'Outfit',sans-serif"}}>
+          <button onClick={sendCaseMessage} disabled={(!chatInput.trim()&&!caseAttachedFile?.uploaded)||chatSending||caseUploading}
+            style={{padding:"0 16px",height:42,borderRadius:12,border:"none",background:(chatInput.trim()||caseAttachedFile?.uploaded)?"var(--g)":"rgba(255,255,255,0.1)",color:(chatInput.trim()||caseAttachedFile?.uploaded)?"white":"var(--sub)",fontWeight:800,fontSize:14,cursor:"pointer",flexShrink:0,fontFamily:"'Outfit',sans-serif"}}>
             {chatSending?"…":"→"}
           </button>
         </div>
