@@ -688,17 +688,28 @@ function DirectRoomScreen({room,user,onBack,onGoToRequests}){
 
   const send=async()=>{
     const text=input.trim();
-    if(!text||sending) return;
-    // Content filter
-    const check=filterContent(text);
-    if(check.blocked){setFilterWarning(check.reason);setTimeout(()=>setFilterWarning(""),5000);return;}
+    if(!text&&!attachedFile) return;
+    if(sending||fileSending) return;
+    // Content filter for text
+    if(text){const check=filterContent(text);if(check.blocked){setFilterWarning(check.reason);setTimeout(()=>setFilterWarning(""),5000);return;}}
     setSending(true);setFilterWarning("");
+
+    // Upload file if attached
+    let fileResult=null;
+    if(attachedFile?.rawFile){
+      setFileSending(true);
+      fileResult=await uploadChatFile(attachedFile.rawFile,user.id||"anon");
+      setFileSending(false);
+      if(!fileResult){setSending(false);return;}
+    }
+
     const{data:msg}=await supabase.from("direct_messages").insert({
       room_id:room.id,
       sender_id:user.id,
       sender_role:myRole,
-      content:text,
-      type:"text",
+      content:fileResult?fileResult.name:text,
+      type:fileResult?(fileResult.isImage?"image":"file"):"text",
+      metadata:fileResult?{url:fileResult.url,name:fileResult.name,size:fileResult.size,mimeType:fileResult.mimeType,isImage:fileResult.isImage}:null,
       read_by_customer:isCustomer,
       read_by_business:!isCustomer,
       customer_id:room.customer_id||null,
@@ -707,6 +718,7 @@ function DirectRoomScreen({room,user,onBack,onGoToRequests}){
       request_id:room.request_id||null,
     }).select().single();
     if(msg) setMessages(prev=>[...prev,msg]);
+    setAttachedFile(null);
     // Notify other party
     const notifyId=isCustomer?room.business_user_id:room.customer_id;
     if(notifyId){
