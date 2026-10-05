@@ -29,28 +29,24 @@ const sendEmail=async(to,template,data)=>{
 const PAYSTACK_PUBLIC_KEY = process.env.REACT_APP_PAYSTACK_KEY || "pk_live_ee12723c71f0bf534bed567b1423cf2b4c479c3c";
 // ── FILE ATTACHMENT FOR CHAT ─────────────────────────────────────────────────
 const fmtSize=b=>b>1048576?(b/1048576).toFixed(1)+"MB":(b/1024).toFixed(0)+"KB";
-const isImgFile=f=>{const e=(f.name||"").split(".").pop().toLowerCase();return["jpg","jpeg","png","gif","webp","heic","avif"].includes(e)||f.type?.startsWith("image/");};
+const isImgFile=f=>{const n=typeof f==="string"?f:(f?.name||"");const e=n.split(".").pop().toLowerCase();return["jpg","jpeg","png","gif","webp","heic","avif"].includes(e)||(f?.type||"").startsWith("image/");};
 
-// Read file locally for preview before uploading
-const readFilePreview=file=>new Promise(resolve=>{
-  if(isImgFile(file)){
-    const r=new FileReader();
-    r.onload=e=>resolve(e.target.result);
-    r.readAsDataURL(file);
-  } else resolve(null);
+// Get local preview URL (no upload yet)
+const getLocalPreview=file=>new Promise(resolve=>{
+  if(isImgFile(file)){const r=new FileReader();r.onload=e=>resolve(e.target.result);r.readAsDataURL(file);}
+  else resolve(null);
 });
 
-// Upload to Supabase storage
+// Upload file to Supabase — called only on Send
 const uploadChatFile=async(file,folder)=>{
-  if(!file) return null;
-  if(file.size>20*1024*1024){alert("Max file size is 20MB.");return null;}
-  const ext=(file.name||"file").split(".").pop();
-  const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-  const fp=`chat/${folder}/${Date.now()}_${safeName}`;
+  const MAX=20*1024*1024;
+  if(!file||file.size>MAX){if(file?.size>MAX)alert("Max 20MB.");return null;}
+  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+  const fp=`chat/${folder||"shared"}/${Date.now()}_${safe}`;
   const{error}=await supabase.storage.from("chat-files").upload(fp,file,{upsert:false,contentType:file.type});
-  if(error){alert("Upload failed: "+error.message);return null;}
+  if(error){console.warn("Upload error:",error.message);alert("Upload failed: "+error.message);return null;}
   const{data:ud}=supabase.storage.from("chat-files").getPublicUrl(fp);
-  return{url:ud.publicUrl,name:file.name,size:file.size,mimeType:file.type,isImage:isImgFile(file),path:fp};
+  return{url:ud.publicUrl,name:file.name,size:file.size,mimeType:file.type,isImage:isImgFile(file)};
 };
 
 const PAYSTACK_CURRENCY   = "NGN"; // Change to "EGP" when Xairod Paystack is ready
@@ -611,24 +607,21 @@ function filterContent(text){
 
 
 // ── REUSABLE FILE PREVIEW CARD ───────────────────────────────────────────────
-function FilePreviewCard({file,onRemove,uploading}){
+function FilePreviewCard({file,onRemove,sending}){
   if(!file) return null;
+  const icon=file.mimeType?.includes("pdf")?"📋":file.mimeType?.includes("word")?"📝":"📄";
   return(
-    <div style={{margin:"6px 0",background:"rgba(77,217,148,0.06)",border:"1.5px solid rgba(77,217,148,0.15)",borderRadius:10,padding:10,display:"flex",gap:10,alignItems:"center"}}>
-      {file.preview?(
-        <img src={file.preview} alt="" style={{width:52,height:52,objectFit:"cover",borderRadius:7,flexShrink:0}}/>
-      ):(
-        <div style={{width:52,height:52,background:"rgba(255,255,255,0.06)",borderRadius:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>
-          {file.mimeType?.includes("pdf")?"📋":file.mimeType?.includes("word")?"📝":"📄"}
-        </div>
-      )}
+    <div style={{margin:"6px 0 2px",background:"rgba(77,217,148,0.06)",border:"1.5px solid rgba(77,217,148,0.2)",borderRadius:10,padding:"8px 10px",display:"flex",gap:10,alignItems:"center"}}>
+      {file.preview
+        ?<img src={file.preview} alt="" style={{width:48,height:48,objectFit:"cover",borderRadius:6,flexShrink:0,border:"1px solid rgba(255,255,255,0.1)"}}/>
+        :<div style={{width:48,height:48,background:"rgba(255,255,255,0.05)",borderRadius:6,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,border:"1px solid rgba(255,255,255,0.06)"}}>{icon}</div>
+      }
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:12,fontWeight:700,color:"var(--txt)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.name}</div>
-        <div style={{fontSize:10,color:"var(--sub)",marginTop:2}}>{fmtSize(file.size)} · {file.mimeType||"file"}</div>
-        {uploading&&<div style={{fontSize:10,color:"#F5C550",marginTop:2}}>⏳ Uploading…</div>}
-        {file.uploaded&&<div style={{fontSize:10,color:"var(--g)",marginTop:2}}>✓ Ready to send</div>}
+        <div style={{fontSize:10,color:"var(--sub)",marginTop:1}}>{fmtSize(file.size)}</div>
+        <div style={{fontSize:10,color:sending?"#F5C550":"var(--g)",marginTop:1}}>{sending?"⏳ Uploading & sending…":"📎 Ready — tap Send"}</div>
       </div>
-      {!uploading&&<button onClick={onRemove} style={{background:"none",border:"none",color:"var(--sub)",cursor:"pointer",fontSize:20,flexShrink:0,lineHeight:1}}>×</button>}
+      {!sending&&<button onClick={onRemove} style={{background:"none",border:"none",color:"var(--sub)",cursor:"pointer",fontSize:20,padding:4}}>×</button>}
     </div>
   );
 }
@@ -656,8 +649,8 @@ function MsgFileRender({meta}){
   );
 }
 function DirectRoomScreen({room,user,onBack,onGoToRequests}){
-  const[attachedFile,setAttachedFile]=useState(null); // {file,preview,uploaded,url,...}
-  const[uploading,setUploading]=useState(false);
+  const[attachedFile,setAttachedFile]=useState(null); // {rawFile,name,size,mimeType,isImage,preview}
+  const[fileSending,setFileSending]=useState(false);
   const[messages,setMessages]=useState([]);
   const[input,setInput]=useState("");
   const[sending,setSending]=useState(false);
@@ -1496,7 +1489,7 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
   const[chatInput,setChatInput]=useState("");
   const[chatSending,setChatSending]=useState(false);
   const[caseAttachedFile,setCaseAttachedFile]=useState(null);
-  const[caseUploading,setCaseUploading]=useState(false);
+  const[caseSending,setCaseSending]=useState(false);
   const[userLeads,setUserLeads]=useState([]); // user's medical cases
 
   // Medical tourism intake state
@@ -1609,23 +1602,28 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
     if(!chatInput.trim()||!activeLead||chatSending) return;
     setChatSending(true);
     const ref=activeLead.ref||activeLead.id;
-    const af=caseAttachedFile;
+    let caseFileResult=null;
+    if(caseAttachedFile?.rawFile){
+      setCaseSending(true);
+      caseFileResult=await uploadChatFile(caseAttachedFile.rawFile,user?.id||"anon");
+      if(!caseFileResult){setCaseSending(false);setChatSending(false);return;}
+    }
     const{data,error}=await supabase.from("case_messages").insert({
       case_ref:ref,
       lead_id:activeLead.id!==ref?activeLead.id:null,
       sender_id:user.id,
       sender_name:user.name||user.email?.split("@")[0]||"Patient",
       sender_role:"patient",
-      message:af?af.name:(chatInput.trim()),
-      message_type:af?(af.isImage?"image":"file"):"text",
-      file_url:af?af.url:null,
-      file_name:af?af.name:null,
+      message:caseFileResult?caseFileResult.name:(chatInput.trim()),
+      message_type:caseFileResult?(caseFileResult.isImage?"image":"file"):"text",
+      file_url:caseFileResult?caseFileResult.url:null,
+      file_name:caseFileResult?caseFileResult.name:null,
       read_by_patient:true,
       read_by_manager:false,
     }).select().single();
     if(error) console.warn("send case msg error:",error.message);
     if(data) setCaseMessages(p=>[...p,data]);
-    setChatInput("");setCaseAttachedFile(null);setChatSending(false);
+    setChatInput("");setCaseAttachedFile(null);setCaseSending(false);setChatSending(false);
   };
 
   const PROCEDURES=[
@@ -1744,18 +1742,13 @@ Notes: ${notes}`;
 
       {/* Input */}
       <div style={{position:"sticky",bottom:80,background:"var(--bg)"}}>
-        {caseAttachedFile&&<FilePreviewCard file={caseAttachedFile} uploading={caseUploading} onRemove={()=>{setCaseAttachedFile(null);setCaseUploading(false);}}/>}
+        {caseAttachedFile&&<FilePreviewCard file={caseAttachedFile} sending={caseSending} onRemove={()=>setCaseAttachedFile(null)}/>}
         <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
           <label style={{width:36,height:36,borderRadius:"50%",border:"1px solid var(--bdr)",background:"rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
             <input type="file" accept="image/*,.pdf,.doc,.docx,.txt" style={{display:"none"}} onChange={async e=>{
               const file=e.target.files[0];if(!file)return;
-              const preview=await readFilePreview(file);
-              setCaseAttachedFile({file,name:file.name,size:file.size,mimeType:file.type,isImage:isImgFile(file),preview,uploaded:false});
-              setCaseUploading(true);
-              const res=await uploadChatFile(file,user?.id||"anon");
-              if(res) setCaseAttachedFile(p=>({...p,...res,uploaded:true,preview}));
-              else setCaseAttachedFile(null);
-              setCaseUploading(false);
+              const preview=await getLocalPreview(file);
+              setCaseAttachedFile({rawFile:file,name:file.name,size:file.size,mimeType:file.type,isImage:isImgFile(file),preview});
               e.target.value="";
             }}/>
             <span style={{fontSize:16}}>📎</span>
@@ -1764,8 +1757,8 @@ Notes: ${notes}`;
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendCaseMessage();}}}
             placeholder="Message your case manager…" rows={2}
             style={{flex:1,padding:"10px 13px",borderRadius:12,border:"1px solid var(--bdr)",background:"var(--card)",color:"var(--txt)",fontFamily:"'Outfit',sans-serif",fontSize:13,resize:"none",outline:"none"}}/>
-          <button onClick={sendCaseMessage} disabled={(!chatInput.trim()&&!caseAttachedFile?.uploaded)||chatSending||caseUploading}
-            style={{padding:"0 16px",height:42,borderRadius:12,border:"none",background:(chatInput.trim()||caseAttachedFile?.uploaded)?"var(--g)":"rgba(255,255,255,0.1)",color:(chatInput.trim()||caseAttachedFile?.uploaded)?"white":"var(--sub)",fontWeight:800,fontSize:14,cursor:"pointer",flexShrink:0,fontFamily:"'Outfit',sans-serif"}}>
+          <button onClick={sendCaseMessage} disabled={(!chatInput.trim()&&!caseAttachedFile)||chatSending||caseSending}
+            style={{padding:"0 16px",height:42,borderRadius:12,border:"none",background:(chatInput.trim()||caseAttachedFile)?"var(--g)":"rgba(255,255,255,0.1)",color:(chatInput.trim()||caseAttachedFile)?"white":"var(--sub)",fontWeight:800,fontSize:14,cursor:"pointer",flexShrink:0,fontFamily:"'Outfit',sans-serif"}}>
             {chatSending?"…":"→"}
           </button>
         </div>
