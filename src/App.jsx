@@ -37,16 +37,25 @@ const getLocalPreview=file=>new Promise(resolve=>{
   else resolve(null);
 });
 
-// Upload file to Supabase — called only on Send
+// Upload file to Supabase — tries chat-files then listing-images as fallback
 const uploadChatFile=async(file,folder)=>{
   const MAX=20*1024*1024;
-  if(!file||file.size>MAX){if(file?.size>MAX)alert("Max 20MB.");return null;}
+  if(!file) return null;
+  if(file.size>MAX){alert("Max file size is 20MB.");return null;}
   const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-  const fp=`chat/${folder||"shared"}/${Date.now()}_${safe}`;
-  const{error}=await supabase.storage.from("chat-files").upload(fp,file,{upsert:false,contentType:file.type});
-  if(error){console.warn("Upload error:",error.message);alert("Upload failed: "+error.message);return null;}
-  const{data:ud}=supabase.storage.from("chat-files").getPublicUrl(fp);
-  return{url:ud.publicUrl,name:file.name,size:file.size,mimeType:file.type,isImage:isImgFile(file)};
+  const ts=Date.now();
+  // Try chat-files first, then listing-images as fallback
+  for(const bucket of ["chat-files","listing-images"]){
+    const fp=`${folder||"chat"}/${ts}_${safe}`;
+    const{error}=await supabase.storage.from(bucket).upload(fp,file,{upsert:true,contentType:file.type});
+    if(!error){
+      const{data:ud}=supabase.storage.from(bucket).getPublicUrl(fp);
+      return{url:ud.publicUrl,name:file.name,size:file.size,mimeType:file.type,isImage:isImgFile(file)};
+    }
+    console.warn(`Upload to ${bucket} failed:`,error.message);
+  }
+  alert("File upload failed. Please try again or check your connection.");
+  return null;
 };
 
 const PAYSTACK_CURRENCY   = "NGN"; // Change to "EGP" when Xairod Paystack is ready
@@ -698,7 +707,9 @@ function DirectRoomScreen({room,user,onBack,onGoToRequests}){
     let fileResult=null;
     if(attachedFile?.rawFile){
       setFileSending(true);
+      console.log("Uploading file:",attachedFile.name,attachedFile.size);
       fileResult=await uploadChatFile(attachedFile.rawFile,user.id||"anon");
+      console.log("Upload result:",fileResult);
       setFileSending(false);
       if(!fileResult){setSending(false);return;}
     }
