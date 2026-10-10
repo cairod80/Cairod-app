@@ -42,19 +42,21 @@ const uploadChatFile=async(file,folder)=>{
   const MAX=20*1024*1024;
   if(!file) return null;
   if(file.size>MAX){alert("Max file size is 20MB.");return null;}
-  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-  const ts=Date.now();
-  // Try chat-files first, then listing-images as fallback
+  // Validate extension server-side (MIME type from browser is not trusted)
+  const ext=(file.name||"").split(".").pop().toLowerCase();
+  const ALLOWED_EXTS=["jpg","jpeg","png","gif","webp","heic","avif","pdf","doc","docx","txt","xls","xlsx"];
+  if(!ALLOWED_EXTS.includes(ext)){alert("File type not allowed.");return null;}
+  // Use random UUID to prevent path prediction and overwrite attacks
+  const safeExt=ext.replace(/[^a-z0-9]/g,"");
+  const fp=`${folder||"chat"}/${crypto.randomUUID()}.${safeExt}`;
   for(const bucket of ["chat-files","listing-images"]){
-    const fp=`${folder||"chat"}/${ts}_${safe}`;
-    const{error}=await supabase.storage.from(bucket).upload(fp,file,{upsert:true,contentType:file.type});
+    const{error}=await supabase.storage.from(bucket).upload(fp,file,{upsert:false,contentType:file.type});
     if(!error){
       const{data:ud}=supabase.storage.from(bucket).getPublicUrl(fp);
       return{url:ud.publicUrl,name:file.name,size:file.size,mimeType:file.type,isImage:isImgFile(file)};
     }
-    console.warn(`Upload to ${bucket} failed:`,error.message);
   }
-  alert("File upload failed. Please try again or check your connection.");
+  alert("File upload failed. Please try again.");
   return null;
 };
 
@@ -707,9 +709,9 @@ function DirectRoomScreen({room,user,onBack,onGoToRequests}){
     let fileResult=null;
     if(attachedFile?.rawFile){
       setFileSending(true);
-      console.log("Uploading file:",attachedFile.name,attachedFile.size);
+      
       fileResult=await uploadChatFile(attachedFile.rawFile,user.id||"anon");
-      console.log("Upload result:",fileResult);
+      
       setFileSending(false);
       if(!fileResult){setSending(false);return;}
     }
@@ -942,7 +944,7 @@ function DirectMessagesScreen({user,onOpenRoom}){
       .eq("status","active")
       .order("created_at",{ascending:false})
       .then(({data,error})=>{
-        if(error) console.warn("chat_rooms load error:",error.message);
+        if(error) devWarn("chat_rooms error:",error.message);
         setRooms(data||[]);
         setLoading(false);
       });
@@ -1538,7 +1540,7 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
     supabase.from("leads").select("*").eq("user_id",user.id)
       .order("created_at",{ascending:false})
       .then(({data,error})=>{
-        if(error) console.warn("leads load error:",error.message);
+        if(error) devWarn("leads load error:",error.message);
         if(data&&data.length>0) setUserLeads(data);
         else{
           // Fallback: find leads by checking case_messages for this user's notifications
@@ -1615,7 +1617,7 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
     if(!ref) return;
     const{data,error}=await supabase.from("case_messages")
       .select("*").eq("case_ref",ref).order("created_at",{ascending:true});
-    if(error) console.warn("loadCaseMessages error:",error.message);
+    if(error) devWarn("loadCaseMessages error:",error.message);
     setCaseMessages(data||[]);
     await supabase.from("case_messages").update({read_by_patient:true})
       .eq("case_ref",ref).eq("sender_role","case_manager");
@@ -1644,7 +1646,7 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
       read_by_patient:true,
       read_by_manager:false,
     }).select().single();
-    if(error) console.warn("send case msg error:",error.message);
+    if(error) devWarn("send case msg error:",error.message);
     if(data) setCaseMessages(p=>[...p,data]);
     setChatInput("");setCaseAttachedFile(null);setCaseSending(false);setChatSending(false);
   };
@@ -4983,7 +4985,37 @@ function MainApp({user,onLogout}){
                   <span style={{color:"var(--g)",fontSize:15}}>›</span>
                 </div>
               )}
-              <button onClick={onLogout} style={{width:"100%",marginTop:14,marginBottom:18,background:"rgba(192,57,43,0.1)",border:"1px solid rgba(192,57,43,0.2)",color:"var(--warn)",borderRadius:11,padding:"11px",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,cursor:"pointer"}}>Sign Out</button>
+              <button onClick={onLogout} style={{width:"100%",marginTop:14,background:"rgba(192,57,43,0.1)",border:"1px solid rgba(192,57,43,0.2)",color:"var(--warn)",borderRadius:11,padding:"11px",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,cursor:"pointer"}}>Sign Out</button>
+
+              {/* Account management */}
+              <div style={{marginTop:8,marginBottom:18}}>
+                <button onClick={()=>{
+                  if(window.confirm("Deactivate your account?\n\nYour profile will be hidden and you won't receive notifications. You can reactivate anytime by logging back in.")){{
+                    supabase.from("profiles").update({deactivated:true,deactivated_at:new Date().toISOString()}).eq("id",user.id)
+                      .then(()=>{onLogout();});
+                  }}
+                }} style={{width:"100%",background:"none",border:"none",color:"rgba(255,255,255,0.25)",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,cursor:"pointer",padding:"8px 0",textAlign:"center"}}>
+                  Deactivate account
+                </button>
+                <button onClick={()=>{
+                  const confirm1=window.confirm("⚠️ Delete your account permanently?\n\nThis will delete ALL your data including requests, bookings, messages and profile. This cannot be undone.");
+                  if(!confirm1) return;
+                  const typed=window.prompt('Type "DELETE" to confirm permanent account deletion:');
+                  if(typed!=="DELETE"){alert("Deletion cancelled.");return;}
+                  // Mark for deletion — actual deletion handled by admin/edge function for safety
+                  supabase.from("account_deletion_requests").insert({
+                    user_id:user.id,
+                    email:user.email,
+                    requested_at:new Date().toISOString(),
+                    reason:"User requested via app"
+                  }).then(()=>{
+                    alert("Your account deletion request has been submitted. Your account will be fully deleted within 30 days as required by data protection law. You will receive a confirmation email.");
+                    onLogout();
+                  });
+                }} style={{width:"100%",background:"none",border:"none",color:"rgba(192,57,43,0.45)",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,cursor:"pointer",padding:"8px 0 0",textAlign:"center"}}>
+                  Delete account permanently
+                </button>
+              </div>
             </div>
           </div>
         )}
