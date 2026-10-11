@@ -988,6 +988,7 @@ function DirectMessagesScreen({user,onOpenRoom}){
 // ════════════════════════════════════════════════════════════════════════════
 function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoToChat}){
   const[filter,setFilter]=useState("all");
+  const[quotes,setQuotes]=useState([]);
   const[confCode,setConfCode]=useState({});
   const[confLoading,setConfLoading]=useState({});
   const[confMsg,setConfMsg]=useState({});
@@ -1012,6 +1013,14 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
     in_progress:"In progress",awaiting_confirmation:"Enter confirmation code",
     completed:"Completed ✓",declined:"Declined",cancelled:"Cancelled"
   };
+
+  // Load quotes for all requests so we can show Pay button on in_progress
+  useEffect(()=>{
+    if(!requests?.length||!user?.id) return;
+    const reqIds=requests.map(r=>r.id);
+    supabase.from("quotes").select("*").in("request_id",reqIds).eq("status","accepted")
+      .then(({data})=>{if(data) setQuotes(data);});
+  },[requests?.length,user?.id]);
 
   const[paymentModal,setPaymentModal]=useState(null);
   const[paying,setPaying]=useState(false);
@@ -1454,16 +1463,43 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
               </div>
             )}
 
-            {/* In progress */}
-            {req.status==="in_progress"&&(
-              <div style={{background:"rgba(142,68,173,0.08)",border:"1px solid rgba(142,68,173,0.15)",borderRadius:10,padding:"11px 13px",display:"flex",gap:8,alignItems:"flex-start"}}>
-                <span style={{fontSize:18,flexShrink:0}}>⚡</span>
-                <div>
-                  <div style={{fontSize:11,fontWeight:700,color:"#8E44AD",marginBottom:2}}>Service in Progress</div>
-                  <div style={{fontSize:11,color:"var(--sub)",lineHeight:1.5}}>The business is working on your request. When done, they'll send you a confirmation code to enter here.</div>
+            {/* In progress — show Pay if unpaid, or chat/status if paid */}
+            {req.status==="in_progress"&&(()=>{
+              const matchedQuote=quotes.find(q=>q.request_id===req.id&&q.status==="accepted");
+              const isPaid=req.payment_status==="paid"||req.payment_ref;
+              if(!isPaid&&matchedQuote){
+                return(
+                  <div>
+                    <div style={{background:"rgba(10,107,62,0.06)",border:"1.5px solid rgba(10,107,62,0.15)",borderRadius:12,padding:"13px 14px",marginBottom:8}}>
+                      <div style={{fontSize:10,fontWeight:800,color:"var(--g)",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>💳 Payment Required</div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                        <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:900,color:"var(--txt)"}}>{(matchedQuote.price||0).toLocaleString()} {PAYSTACK_CURRENCY}</div>
+                        <div style={{fontSize:10,color:"var(--sub)"}}>Held in escrow</div>
+                      </div>
+                      <div style={{fontSize:10,color:"var(--sub)",marginBottom:12,lineHeight:1.5}}>Your payment is protected — released to the business only after you confirm service delivery.</div>
+                      <button onClick={()=>setPaymentModal({req,quote:matchedQuote})}
+                        style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:"var(--g)",color:"white",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:14,cursor:"pointer"}}>
+                        💳 Pay {(matchedQuote.price||0).toLocaleString()} {PAYSTACK_CURRENCY}
+                      </button>
+                    </div>
+                    <div style={{background:"rgba(142,68,173,0.06)",border:"1px solid rgba(142,68,173,0.12)",borderRadius:10,padding:"9px 12px",display:"flex",gap:8,alignItems:"center",cursor:"pointer"}}
+                      onClick={()=>onGoToChat&&onGoToChat(req.chat_room_id||req.id)}>
+                      <span style={{fontSize:16}}>💬</span>
+                      <div style={{fontSize:11,fontWeight:700,color:"#8E44AD"}}>Open chat with business →</div>
+                    </div>
+                  </div>
+                );
+              }
+              return(
+                <div style={{background:"rgba(142,68,173,0.08)",border:"1px solid rgba(142,68,173,0.15)",borderRadius:10,padding:"11px 13px",display:"flex",gap:8,alignItems:"flex-start"}}>
+                  <span style={{fontSize:18,flexShrink:0}}>⚡</span>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:"#8E44AD",marginBottom:2}}>Service in Progress</div>
+                    <div style={{fontSize:11,color:"var(--sub)",lineHeight:1.5}}>Payment received. The business is working on your request. When done they'll send a confirmation code.</div>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Needs confirmation code */}
             {needsCode&&(
