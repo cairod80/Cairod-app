@@ -912,7 +912,18 @@ Paystack ref: ${response.reference}`,
 
       {/* Input bar */}
       <div style={{padding:"10px 17px 28px",background:"var(--bg)",borderTop:"1px solid var(--bdr)",flexShrink:0}}>
-        <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+        {attachedFile&&<div style={{padding:"0 0 6px"}}><FilePreviewCard file={attachedFile} sending={fileSending} onRemove={()=>setAttachedFile(null)}/></div>}
+      <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+          {/* File attachment — all users */}
+          <label style={{width:40,height:40,borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--card)",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
+            <input type="file" accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx" style={{display:"none"}} onChange={async e=>{
+              const file=e.target.files[0];if(!file)return;
+              const preview=await getLocalPreview(file);
+              setAttachedFile({rawFile:file,name:file.name,size:file.size,mimeType:file.type,isImage:isImgFile(file),preview});
+              e.target.value="";
+            }}/>
+            📎
+          </label>
           {!isCustomer&&(
             <button onClick={()=>setShowPayCard(!showPayCard)}
               style={{width:40,height:40,borderRadius:10,border:"1.5px solid var(--bdr)",background:"var(--card)",cursor:"pointer",fontSize:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1040,13 +1051,22 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
         .from("business_accounts").select("user_id,name").eq("id",quote.business_id);
       if(bizRows?.[0]){bizUserId=bizRows[0].user_id;bizName=bizRows[0].name||bizName;}
 
-      // 3. Create or find chat_rooms row — messages use chat_rooms.id as room_id
+      // 3. Find or create chat_rooms — one room per customer+business pair
+      // This prevents duplicate rooms when same user requests same business again
       let roomId=null;
-      const{data:existingRoom}=await supabase.from("chat_rooms")
-        .select("id").eq("request_id",req.id).limit(1);
+      const{data:existingRooms}=await supabase.from("chat_rooms")
+        .select("id")
+        .eq("customer_id",user.id)
+        .eq("business_id",quote.business_id)
+        .eq("status","active")
+        .order("created_at",{ascending:false})
+        .limit(1);
 
-      if(existingRoom?.[0]){
-        roomId=existingRoom[0].id;
+      if(existingRooms?.[0]){
+        // Reuse existing room for this customer-business pair
+        roomId=existingRooms[0].id;
+        // Update request_id to the latest request
+        await supabase.from("chat_rooms").update({request_id:req.id,listing_name:req.listing_name||bizName}).eq("id",roomId);
       } else {
         const{data:newRoom,error:roomErr}=await supabase.from("chat_rooms").insert({
           request_id:req.id,
@@ -1056,7 +1076,7 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
           listing_name:req.listing_name||bizName,
           status:"active",
         }).select("id").single();
-        if(roomErr) console.warn("chat_rooms insert error:",roomErr.message);
+        if(roomErr) devWarn("chat_rooms insert error:",roomErr.message);
         roomId=newRoom?.id||null;
       }
 
