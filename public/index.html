@@ -3,18 +3,47 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#03311A" />
+
+    <!-- ── PWA / Theme ─────────────────────────────────────────────────── -->
+    <meta name="theme-color" content="#0A6B3E" />
+    <meta name="application-name" content="Xairod" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- ── iOS / Safari PWA ────────────────────────────────────────────── -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="description" content="Xairod — Your Home Away From Home. The community app for Africans in Egypt." />
-    <title>Xairod.</title>
-    <style>
-      html, body { height: 100%; height: 100dvh; overflow: hidden; overscroll-behavior: none; background: #03311A; }
-      #root { height: 100%; height: 100dvh; }
-    </style>
+    <meta name="apple-mobile-web-app-title" content="Xairod" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
+
+    <!-- ── Manifest ─────────────────────────────────────────────────────── -->
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+    <!-- ── Favicon ──────────────────────────────────────────────────────── -->
+    <link rel="icon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="%PUBLIC_URL%/favicon-16x16.png" />
+    <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico" />
+
+    <!-- ── SEO / Social ─────────────────────────────────────────────────── -->
+    <meta name="description" content="Your home away from home in Cairo. Housing, health, food and community for Africans in Egypt." />
+    <meta property="og:title" content="Xairod — Africans in Cairo" />
+    <meta property="og:description" content="Find verified housing, doctors, food and services in Cairo. Secure payments, trusted providers." />
+    <meta property="og:image" content="https://xairod.com/og-image.png" />
+    <meta property="og:url" content="https://xairod.com" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- ── Fonts ────────────────────────────────────────────────────────── -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- ── iOS Splash Screens (optional but improves launch feel) ────────── -->
+    <meta name="msapplication-TileColor" content="#0A6B3E" />
+    <meta name="msapplication-TileImage" content="%PUBLIC_URL%/icon-192.png" />
+
+    <title>Xairod</title>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run Xairod.</noscript>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
   </body>
 </html>
