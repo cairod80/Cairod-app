@@ -1,6 +1,7 @@
 /* eslint-disable */
 import React, { useState, useEffect, useRef, createContext, useContext } from "react";
 import { createClient } from "@supabase/supabase-js";
+import PWAInstallButton from './PWAInstallButton';
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
@@ -5040,6 +5041,7 @@ function MainApp({user,onLogout}){
                   <div className="setting-label" style={{color:"var(--g)"}}>⚙️&nbsp;&nbsp;Admin Panel</div>
                   <span style={{color:"var(--g)",fontSize:15}}>›</span>
                 </div>
+           <PWAInstallButton /> 
               )}
               <button onClick={onLogout} style={{width:"100%",marginTop:14,background:"rgba(192,57,43,0.1)",border:"1px solid rgba(192,57,43,0.2)",color:"var(--warn)",borderRadius:11,padding:"11px",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,cursor:"pointer"}}>Sign Out</button>
 
