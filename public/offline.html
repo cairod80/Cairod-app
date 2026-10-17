@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>Xairod — You're Offline</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body{height:100%;background:#0A1A0D;font-family:'Outfit',system-ui,sans-serif;color:#FEFCF7;}
+    .wrap{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center;}
+    .icon{width:80px;height:80px;background:rgba(77,217,148,0.1);border:1px solid rgba(77,217,148,0.2);border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:28px;}
+    .logo{font-family:Georgia,serif;font-size:22px;font-weight:900;color:#FEFCF7;margin-bottom:4px;}
+    .logo span{color:#4DD994;}
+    h1{font-size:24px;font-weight:800;margin-bottom:12px;color:#FEFCF7;}
+    p{font-size:15px;color:rgba(255,255,255,0.45);line-height:1.7;max-width:320px;margin-bottom:32px;}
+    .btn{background:#4DD994;color:#03311A;font-weight:800;font-size:15px;padding:14px 32px;border-radius:50px;border:none;cursor:pointer;font-family:inherit;}
+    .btn:active{opacity:0.85;}
+    .note{margin-top:20px;font-size:12px;color:rgba(255,255,255,0.2);}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="icon">🌍</div>
+  <div class="logo"><span>X</span>airod.</div>
+  <h1>You're offline</h1>
+  <p>Check your connection and try again. Your account and bookings are safe — they'll load as soon as you reconnect.</p>
+  <button class="btn" onclick="window.location.reload()">Try Again</button>
+  <div class="note">Payments and bookings require an internet connection</div>
+</div>
+</body>
+</html>
