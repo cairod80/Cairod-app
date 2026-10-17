@@ -5041,8 +5041,8 @@ function MainApp({user,onLogout}){
                   <div className="setting-label" style={{color:"var(--g)"}}>⚙️&nbsp;&nbsp;Admin Panel</div>
                   <span style={{color:"var(--g)",fontSize:15}}>›</span>
                 </div>
-           <PWAInstallButton /> 
               )}
+              <PWAInstallButton style={{marginBottom:10}}/>
               <button onClick={onLogout} style={{width:"100%",marginTop:14,background:"rgba(192,57,43,0.1)",border:"1px solid rgba(192,57,43,0.2)",color:"var(--warn)",borderRadius:11,padding:"11px",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,cursor:"pointer"}}>Sign Out</button>
 
               {/* Account management */}
