@@ -5042,7 +5042,17 @@ function MainApp({user,onLogout}){
                   <span style={{color:"var(--g)",fontSize:15}}>›</span>
                 </div>
               )}
-              <PWAInstallButton style={{marginBottom:10}}/>
+              {/* ── GET THE APP BANNER ── */}
+              <div style={{background:"linear-gradient(135deg,rgba(10,107,62,0.12),rgba(77,217,148,0.06))",border:"1.5px solid rgba(77,217,148,0.2)",borderRadius:14,padding:"14px 16px",marginBottom:14}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+                  <div style={{width:42,height:42,borderRadius:10,background:"var(--g)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>📲</div>
+                  <div>
+                    <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:900,color:"var(--txt)"}}>Get the Xairod App</div>
+                    <div style={{fontSize:11,color:"var(--sub)",marginTop:1}}>Install on your phone for faster access</div>
+                  </div>
+                </div>
+                <PWAInstallButton style={{marginBottom:0}}/>
+              </div>
               <button onClick={onLogout} style={{width:"100%",marginTop:14,background:"rgba(192,57,43,0.1)",border:"1px solid rgba(192,57,43,0.2)",color:"var(--warn)",borderRadius:11,padding:"11px",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,cursor:"pointer"}}>Sign Out</button>
 
               {/* Account management */}
