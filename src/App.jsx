@@ -4385,6 +4385,240 @@ function OnboardingChecklist({steps,onDismiss}){
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
+
+
+// ── PREFERENCES SETTINGS (in Profile) ────────────────────────────────────────
+function PreferencesSettings({user}){
+  const[interests,setInterests]=useState([]);
+  const[saving,setSaving]=useState(false);
+  const[saved,setSavedState]=useState(false);
+  const[expanded,setExpanded]=useState(false);
+
+  const SERVICES=[
+    {id:"housing",icon:"🏠",label:"Housing"},
+    {id:"health",icon:"🏥",label:"Health"},
+    {id:"food",icon:"🍛",label:"Food"},
+    {id:"schools",icon:"🎓",label:"Schools"},
+    {id:"community",icon:"🌍",label:"Community"},
+    {id:"medical_tourism",icon:"✈️",label:"Medical Tourism"},
+  ];
+
+  useEffect(()=>{
+    if(!user?.id) return;
+    supabase.from("profiles").select("service_interests").eq("id",user.id).single()
+      .then(({data})=>{
+        if(data?.service_interests) setInterests(data.service_interests);
+      });
+  },[user?.id]);
+
+  const toggle=(id)=>setInterests(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+
+  const savePrefs=async()=>{
+    setSaving(true);
+    await supabase.from("profiles").update({service_interests:interests}).eq("id",user.id);
+    setSaving(false);setSavedState(true);
+    setTimeout(()=>setSavedState(false),2000);
+  };
+
+  return(
+    <div style={{background:"var(--card)",border:"1px solid var(--bdr)",borderRadius:14,padding:"14px 16px",marginBottom:14}}>
+      <div onClick={()=>setExpanded(p=>!p)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+        <div style={{width:38,height:38,borderRadius:9,background:"rgba(77,217,148,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>⚙️</div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:700,color:"var(--txt)"}}>My Preferences</div>
+          <div style={{fontSize:11,color:"var(--sub)",marginTop:1}}>
+            {interests.length>0?interests.map(id=>SERVICES.find(s=>s.id===id)?.icon).join(" "):"Set your interests"}
+          </div>
+        </div>
+        <div style={{color:"var(--sub)",fontSize:18}}>{expanded?"∧":"∨"}</div>
+      </div>
+
+      {expanded&&(
+        <div style={{marginTop:14,borderTop:"1px solid var(--bdr)",paddingTop:14}}>
+          <div style={{fontSize:12,color:"var(--sub)",marginBottom:12}}>What services do you need in Cairo?</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+            {SERVICES.map(s=>{
+              const sel=interests.includes(s.id);
+              return(
+                <div key={s.id} onClick={()=>toggle(s.id)}
+                  style={{border:`1.5px solid ${sel?"var(--g)":"var(--bdr)"}`,background:sel?"rgba(77,217,148,0.08)":"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:18}}>{s.icon}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:sel?"var(--g)":"var(--sub)"}}>{s.label}</span>
+                </div>
+              );
+            })}
+          </div>
+          <button onClick={savePrefs} disabled={saving}
+            style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:"var(--g)",color:"#03311A",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer"}}>
+            {saving?"Saving…":saved?"✓ Saved!":"Save Preferences"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ONBOARDING PREFERENCES SCREEN ────────────────────────────────────────────
+function OnboardingPreferences({user,onDone}){
+  const[step,setStep]=useState(0);
+  const[reason,setReason]=useState("");
+  const[country,setCountry]=useState("");
+  const[interests,setInterests]=useState([]);
+  const[saving,setSaving]=useState(false);
+
+  const REASONS=[
+    {id:"student",icon:"🎓",label:"I am a student",sub:"Studying in Cairo"},
+    {id:"medical",icon:"🏥",label:"Medical treatment",sub:"Coming for healthcare"},
+    {id:"work",icon:"💼",label:"Work or business",sub:"Working in Egypt"},
+    {id:"living",icon:"🏠",label:"Living in Cairo",sub:"Already based here"},
+    {id:"visiting",icon:"✈️",label:"Visiting",sub:"Short stay"},
+  ];
+  const COUNTRIES=[
+    {id:"NG",flag:"🇳🇬",name:"Nigeria"},
+    {id:"GH",flag:"🇬🇭",name:"Ghana"},
+    {id:"ET",flag:"🇪🇹",name:"Ethiopia"},
+    {id:"KE",flag:"🇰🇪",name:"Kenya"},
+    {id:"SN",flag:"🇸🇳",name:"Senegal"},
+    {id:"CM",flag:"🇨🇲",name:"Cameroon"},
+    {id:"CI",flag:"🇨🇮",name:"Côte d'Ivoire"},
+    {id:"CD",flag:"🇨🇩",name:"DR Congo"},
+    {id:"TZ",flag:"🇹🇿",name:"Tanzania"},
+    {id:"UG",flag:"🇺🇬",name:"Uganda"},
+    {id:"other",flag:"🌍",name:"Other African"},
+  ];
+  const SERVICES=[
+    {id:"housing",icon:"🏠",label:"Housing",sub:"Find safe accommodation"},
+    {id:"health",icon:"🏥",label:"Health",sub:"Doctors & clinics"},
+    {id:"food",icon:"🍛",label:"African Food",sub:"Restaurants near you"},
+    {id:"schools",icon:"🎓",label:"Schools",sub:"Admissions & Arabic"},
+    {id:"community",icon:"🌍",label:"Community",sub:"Meet other Africans"},
+    {id:"medical_tourism",icon:"✈️",label:"Medical Tourism",sub:"Treatment packages"},
+  ];
+
+  const toggleInterest=(id)=>{
+    setInterests(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+  };
+
+  const save=async()=>{
+    setSaving(true);
+    try{
+      await supabase.from("profiles").update({
+        onboarding_reason:reason,
+        country_of_origin:country,
+        service_interests:interests,
+        onboarding_completed:true,
+      }).eq("id",user.id);
+    }catch(e){devWarn("prefs save error:",e);}
+    setSaving(false);
+    onDone();
+  };
+
+  const cardStyle=(selected)=>({
+    border:`1.5px solid ${selected?"var(--g)":"var(--bdr)"}`,
+    background:selected?"rgba(77,217,148,0.08)":"var(--card)",
+    borderRadius:12,padding:"12px 14px",cursor:"pointer",
+    display:"flex",gap:12,alignItems:"center",
+    transition:"all 0.15s",
+  });
+
+  return(
+    <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",flexDirection:"column",padding:"0 0 32px"}}>
+      {/* Header */}
+      <div style={{padding:"52px 20px 20px",textAlign:"center"}}>
+        <div style={{fontFamily:"'Fraunces',serif",fontSize:13,fontWeight:900,color:"rgba(255,255,255,0.2)",marginBottom:16}}>
+          <span style={{color:"rgba(77,217,148,0.5)"}}>X</span>airod.
+        </div>
+        {/* Progress dots */}
+        <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:24}}>
+          {[0,1,2].map(i=>(
+            <div key={i} style={{width:step===i?24:8,height:8,borderRadius:4,background:step===i?"var(--g)":step>i?"rgba(77,217,148,0.3)":"rgba(255,255,255,0.1)",transition:"all 0.3s"}}/>
+          ))}
+        </div>
+      </div>
+
+      <div style={{flex:1,padding:"0 20px"}}>
+
+        {/* STEP 0 — Reason */}
+        {step===0&&(
+          <>
+            <div style={{fontFamily:"'Fraunces',serif",fontSize:26,fontWeight:900,color:"var(--txt)",marginBottom:6}}>Why are you in Cairo?</div>
+            <div style={{fontSize:13,color:"var(--sub)",marginBottom:24,lineHeight:1.6}}>We'll personalise your experience based on your situation.</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {REASONS.map(r=>(
+                <div key={r.id} onClick={()=>setReason(r.id)} style={cardStyle(reason===r.id)}>
+                  <span style={{fontSize:24,flexShrink:0}}>{r.icon}</span>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:700,color:"var(--txt)"}}>{r.label}</div>
+                    <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>{r.sub}</div>
+                  </div>
+                  {reason===r.id&&<div style={{marginLeft:"auto",color:"var(--g)",fontWeight:800,fontSize:18}}>✓</div>}
+                </div>
+              ))}
+            </div>
+            <button onClick={()=>setStep(1)} disabled={!reason}
+              style={{width:"100%",marginTop:24,padding:14,borderRadius:12,border:"none",background:reason?"var(--g)":"rgba(255,255,255,0.08)",color:reason?"#03311A":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:15,cursor:reason?"pointer":"default"}}>
+              Continue →
+            </button>
+          </>
+        )}
+
+        {/* STEP 1 — Country */}
+        {step===1&&(
+          <>
+            <div style={{fontFamily:"'Fraunces',serif",fontSize:26,fontWeight:900,color:"var(--txt)",marginBottom:6}}>Where are you from?</div>
+            <div style={{fontSize:13,color:"var(--sub)",marginBottom:24,lineHeight:1.6}}>So we can show you community, food and services relevant to you.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {COUNTRIES.map(ct=>(
+                <div key={ct.id} onClick={()=>setCountry(ct.id)} style={{...cardStyle(country===ct.id),flexDirection:"column",alignItems:"flex-start",padding:"14px"}}>
+                  <span style={{fontSize:28,marginBottom:6}}>{ct.flag}</span>
+                  <div style={{fontSize:13,fontWeight:700,color:"var(--txt)"}}>{ct.name}</div>
+                  {country===ct.id&&<div style={{position:"absolute",top:10,right:10,color:"var(--g)",fontWeight:800}}>✓</div>}
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:24}}>
+              <button onClick={()=>setStep(0)} style={{flex:1,padding:14,borderRadius:12,border:"1px solid var(--bdr)",background:"none",color:"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer"}}>← Back</button>
+              <button onClick={()=>setStep(2)} disabled={!country}
+                style={{flex:2,padding:14,borderRadius:12,border:"none",background:country?"var(--g)":"rgba(255,255,255,0.08)",color:country?"#03311A":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:15,cursor:country?"pointer":"default"}}>
+                Continue →
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* STEP 2 — Services */}
+        {step===2&&(
+          <>
+            <div style={{fontFamily:"'Fraunces',serif",fontSize:26,fontWeight:900,color:"var(--txt)",marginBottom:6}}>What do you need?</div>
+            <div style={{fontSize:13,color:"var(--sub)",marginBottom:24,lineHeight:1.6}}>Select all that apply. You can change this anytime in settings.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {SERVICES.map(s=>{
+                const sel=interests.includes(s.id);
+                return(
+                  <div key={s.id} onClick={()=>toggleInterest(s.id)} style={{...cardStyle(sel),flexDirection:"column",alignItems:"flex-start",padding:"14px",position:"relative"}}>
+                    <span style={{fontSize:26,marginBottom:8}}>{s.icon}</span>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--txt)"}}>{s.label}</div>
+                    <div style={{fontSize:11,color:"var(--sub)",marginTop:2}}>{s.sub}</div>
+                    {sel&&<div style={{position:"absolute",top:10,right:10,width:20,height:20,borderRadius:"50%",background:"var(--g)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#03311A",fontWeight:800}}>✓</div>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:24}}>
+              <button onClick={()=>setStep(1)} style={{flex:1,padding:14,borderRadius:12,border:"1px solid var(--bdr)",background:"none",color:"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer"}}>← Back</button>
+              <button onClick={save} disabled={saving||interests.length===0}
+                style={{flex:2,padding:14,borderRadius:12,border:"none",background:interests.length>0?"var(--g)":"rgba(255,255,255,0.08)",color:interests.length>0?"#03311A":"var(--sub)",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:15,cursor:interests.length>0?"pointer":"default"}}>
+                {saving?"Saving…":"Let's go 🌍"}
+              </button>
+            </div>
+            <button onClick={onDone} style={{width:"100%",marginTop:12,background:"none",border:"none",color:"var(--sub)",fontSize:12,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>Skip for now</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MainApp({user,onLogout}){
   const[tab,setTab]=useState("home");
   const[modal,setModal]=useState(null);
@@ -5042,6 +5276,9 @@ function MainApp({user,onLogout}){
                   <span style={{color:"var(--g)",fontSize:15}}>›</span>
                 </div>
               )}
+              {/* ── SERVICE PREFERENCES ── */}
+              <PreferencesSettings user={user}/>
+
               {/* ── GET THE APP BANNER ── */}
               <div style={{background:"linear-gradient(135deg,rgba(10,107,62,0.12),rgba(77,217,148,0.06))",border:"1.5px solid rgba(77,217,148,0.2)",borderRadius:14,padding:"14px 16px",marginBottom:14}}>
                 <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
@@ -5432,11 +5669,21 @@ export default function App(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  const login=u=>{
+  const login=async(u)=>{
     trackEvent("login_success",{userId:u?.id});
     localStorage.setItem("xairod_last_active", Date.now().toString());
     setUser(u);
-    setScreen("app");
+    // Check if user has completed onboarding preferences
+    try{
+      const{data:prof}=await supabase.from("profiles").select("onboarding_completed").eq("id",u.id).single();
+      if(!prof?.onboarding_completed){
+        setScreen("preferences");
+      } else {
+        setScreen("app");
+      }
+    }catch{
+      setScreen("app");
+    }
   };
   const logout=async()=>{await supabase.auth.signOut();setUser(null);setScreen("onboard");};
 
@@ -5456,6 +5703,7 @@ export default function App(){
         {screen==="onboard"&&<Onboarding onDone={()=>setScreen("signup")} onLogin={()=>setScreen("login")}/>}
         {screen==="login"&&<Login onSignup={()=>setScreen("signup")} onSuccess={login}/>}
         {screen==="signup"&&<Signup onLogin={()=>setScreen("login")} onBack={()=>setScreen("onboard")} onSuccess={login}/>}
+        {screen==="preferences"&&user&&<OnboardingPreferences user={user} onDone={()=>setScreen("app")}/>}
         {screen==="app"&&user&&(
           <NotifProvider userId={user.id}>
             <MainApp user={user} onLogout={logout}/>
