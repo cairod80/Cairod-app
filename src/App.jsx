@@ -99,6 +99,135 @@ function openPaystackPayment({email,amount,currency,ref,meta,onSuccess,onClose})
 }
 
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// OPPORTUNITY RADAR — In-app activity feed for meaningful updates
+// Shows: new relevant listings, saved listing changes, booking updates
+// ══════════════════════════════════════════════════════════════════════════════
+function OpportunityRadar({user,listings,saved,userPrefs,onOpenListing}){
+  const[items,setItems]=useState([]);
+  const[open,setOpen]=useState(false);
+  const[unread,setUnread]=useState(0);
+
+  useEffect(()=>{
+    if(!user?.id) return;
+    buildRadarItems();
+  },[user?.id,listings.length,saved.size]);
+
+  const buildRadarItems=async()=>{
+    const radarItems=[];
+
+    // 1. New listings matching user interests (last 7 days)
+    const cutoff=Date.now()-7*86400000;
+    const interests=userPrefs?.interests||[];
+    const newMatches=listings.filter(l=>{
+      const isNew=l.created_at&&new Date(l.created_at).getTime()>cutoff;
+      const matches=interests.length===0||interests.includes(l.cat||l.category);
+      return isNew&&matches;
+    }).slice(0,3);
+    newMatches.forEach(l=>radarItems.push({
+      id:`new_${l.id}`,type:"new_listing",icon:"🆕",
+      title:`New: ${l.name}`,
+      sub:`Just added to Xairod`,
+      listing:l,ts:l.created_at
+    }));
+
+    // 2. Booking status updates
+    try{
+      const{data:bookings}=await supabase.from("bookings")
+        .select("id,status,created_at,service_requests(listing_name)")
+        .eq("user_id",user.id)
+        .in("status",["confirmed","completed","cancelled"])
+        .order("created_at",{ascending:false})
+        .limit(3);
+      (bookings||[]).forEach(b=>radarItems.push({
+        id:`booking_${b.id}`,type:"booking_update",
+        icon:b.status==="completed"?"✅":b.status==="confirmed"?"📋":"❌",
+        title:`Booking ${b.status}`,
+        sub:b.service_requests?.listing_name||"Service booking",
+        ts:b.created_at
+      }));
+    }catch{}
+
+    // 3. Saved listing changes (rating updates)
+    if(saved.size>0){
+      const savedIds=[...saved].slice(0,5);
+      const{data:savedListings}=await supabase.from("listings")
+        .select("id,name,rating,updated_at").in("id",savedIds);
+      (savedListings||[]).filter(l=>l.rating>=4).forEach(l=>radarItems.push({
+        id:`saved_${l.id}`,type:"saved_update",icon:"⭐",
+        title:`${l.name} is highly rated`,
+        sub:`Rating: ${l.rating}/5 · In your saved list`,
+        listing:l,ts:l.updated_at
+      }));
+    }
+
+    // Sort by timestamp desc, deduplicate
+    radarItems.sort((a,b)=>new Date(b.ts||0)-new Date(a.ts||0));
+    const seen=new Set();
+    const deduped=radarItems.filter(item=>{
+      if(seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+
+    setItems(deduped.slice(0,8));
+    // Count unread (items from last 24h)
+    const dayAgo=Date.now()-86400000;
+    setUnread(deduped.filter(i=>new Date(i.ts||0).getTime()>dayAgo).length);
+  };
+
+  if(!user||items.length===0) return null;
+
+  return(
+    <>
+      {/* Bell button */}
+      <button onClick={()=>{setOpen(true);setUnread(0);trackEvent("notification_opened",{count:items.length},user?.id);}}
+        style={{position:"relative",background:"none",border:"none",cursor:"pointer",padding:4}}>
+        <span style={{fontSize:22}}>🔔</span>
+        {unread>0&&(
+          <span style={{position:"absolute",top:0,right:0,width:16,height:16,borderRadius:"50%",background:"#E74C3C",color:"white",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            {unread>9?"9+":unread}
+          </span>
+        )}
+      </button>
+
+      {/* Radar panel */}
+      {open&&(
+        <div onClick={()=>setOpen(false)}
+          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:800,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:"var(--card)",borderRadius:"20px 20px 0 0",padding:"20px 0 40px",width:"100%",maxWidth:480,maxHeight:"75vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+            <div style={{padding:"0 20px 14px",borderBottom:"1px solid var(--bdr)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:900,color:"var(--txt)"}}>Opportunity Radar</div>
+              <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",color:"var(--sub)",fontSize:20,cursor:"pointer"}}>×</button>
+            </div>
+            <div style={{overflowY:"auto",flex:1}}>
+              {items.map(item=>(
+                <div key={item.id}
+                  onClick={()=>{if(item.listing&&onOpenListing){onOpenListing(item.listing);}setOpen(false);}}
+                  style={{padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.04)",display:"flex",gap:14,alignItems:"flex-start",cursor:item.listing?"pointer":"default"}}>
+                  <div style={{width:38,height:38,borderRadius:10,background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                    {item.icon}
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--txt)",marginBottom:2}}>{item.title}</div>
+                    <div style={{fontSize:11,color:"var(--sub)"}}>{item.sub}</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",marginTop:3}}>
+                      {item.ts?new Date(item.ts).toLocaleDateString("en-GB",{day:"numeric",month:"short"}):""}
+                    </div>
+                  </div>
+                  {item.listing&&<span style={{color:"var(--sub)",fontSize:16,flexShrink:0}}>›</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // XAIROD v6.0 — App.jsx
 // Supersedes v5.0. Major update per PRD-CAIROD-001 v2.0.
@@ -223,203 +352,39 @@ function useRateLimit(key, {maxCalls=5, windowMs=60000}={}) {
 // Lightweight event tracker. Currently logs to console; swap the body of
 // sendToBackend() for a real provider (Mixpanel, PostHog, or a Supabase
 // `events` table) without touching any call site below.
-function trackEvent(eventName, props={}) {
-  const payload = {
-    event: eventName,
-    ts: new Date().toISOString(),
-    ...props,
-  };
-  // ── Swap this block for a real analytics provider ──
-  // Example — Supabase events table:
-  // supabase.from('events').insert(payload);
-  // Example — PostHog:
-  // posthog.capture(eventName, props);
-  if (typeof console !== "undefined") {
-    console.log("[xairod:event]", payload);
+// ── SESSION ID for anonymous analytics ──────────────────────────────────────
+const _sessionId=(()=>{
+  try{
+    let s=sessionStorage.getItem("xr_sid");
+    if(!s){s=crypto.randomUUID();sessionStorage.setItem("xr_sid",s);}
+    return s;
+  }catch{return "anon";}
+})();
+
+// ── IMPRESSION DEDUP (prevent double-fire on re-renders) ─────────────────────
+const _seen=new Set();
+const _impKey=(listingId)=>`${_sessionId}:${listingId}`;
+
+function trackEvent(eventName, props={}, userId=null) {
+  // Dedup impressions
+  if(eventName==="recommendation_impression"&&props.listing_id){
+    const k=_impKey(props.listing_id);
+    if(_seen.has(k)) return;
+    _seen.add(k);
   }
+  // Persist to Supabase user_events table (fire-and-forget)
+  try{
+    supabase.from("user_events").insert({
+      user_id:userId||null,
+      session_id:_sessionId,
+      event:eventName,
+      listing_id:props.listing_id||null,
+      metadata:{...props, listing_id:undefined},
+    }).then(({error})=>{if(error) devWarn("trackEvent error:",error.message);});
+  }catch(e){devWarn("trackEvent:",e);}
 }
 
-const CATS=[
-  {id:"all",    l:"All",      i:"✦",  c:"#0A6B3E"},
-  {id:"health", l:"Health",   i:"🏥", c:"#C0392B"},
-  {id:"food",   l:"Food",     i:"🍲", c:"#0A6B3E"},
-  {id:"travel", l:"Tourism",  i:"✈️", c:"#2471A3"},
-  {id:"housing",l:"Housing",  i:"🏠", c:"#E67E22"},
-  {id:"school", l:"Schools",  i:"🎓", c:"#8E44AD"},
-];
 
-// Sub-categories for Schools
-const SCHOOL_TYPES=[ // eslint-disable-line no-unused-vars
-  {id:"agency",    l:"Admission Agency", i:"🏢"},
-  {id:"university",l:"University",       i:"🏛️"},
-  {id:"language",  l:"Language School",  i:"📖"},
-];
-
-// Sub-categories for Food
-const FOOD_TYPES=[ // eslint-disable-line no-unused-vars
-  {id:"restaurant",l:"Restaurant",  i:"🍽️"},
-  {id:"african",   l:"African Food",i:"🍲"},
-  {id:"catering",  l:"Catering",    i:"🥘"},
-];
-
-// Sub-categories for Housing
-const HOUSING_TYPES=[ // eslint-disable-line no-unused-vars
-  {id:"apartment",l:"Apartment",         i:"🏠"},
-  {id:"furnished", l:"Furnished Room",   i:"🛏️"},
-  {id:"student",   l:"Student Housing",  i:"🎓"},
-];
-
-// Sub-categories for Tourism
-const TOURISM_TYPES=[ // eslint-disable-line no-unused-vars
-  {id:"tours",    l:"Cairo Tours",    i:"🏛️"},
-  {id:"transfer", l:"Airport Transfer",i:"🚗"},
-  {id:"packages", l:"Travel Packages",i:"✈️"},
-  {id:"visa",     l:"Visa Services",  i:"📋"},
-];
-
-const DATA=[
-  // ── HEALTH ──────────────────────────────────────────────────────────────────
-  {id:"h1",name:"Dar Al Fouad Hospital",cat:"health",city:"6th October",desc:"English-speaking doctors. Most trusted hospital among Africans in Cairo. Full emergency, labs and specialist care.",rating:4.7,rc:88,top:true,african:false,icon:"🏥",phone:"+20 38 540 0000",hours:"24hrs",price:"$$$",verified:true,lat:29.9762,lng:30.9398,images:[]},
-  {id:"h2",name:"Cairo International Clinic",cat:"health",city:"Nasr City",desc:"General practice, blood tests and specialist referrals. English-speaking staff. Affordable for students.",rating:4.6,rc:54,top:false,african:false,icon:"🏥",phone:"+20 100 000 0001",hours:"8am–9pm",price:"$$",verified:true,lat:30.0626,lng:31.3219,images:[]},
-  {id:"h3",name:"Alpha Medical Lab",cat:"health",city:"Heliopolis",desc:"Full blood work, malaria tests, vitamin D, CBC. Home collection available. Results same day.",rating:4.9,rc:156,top:true,african:false,icon:"🧪",phone:"+20 111 000 0002",hours:"7am–10pm",price:"$$",verified:true,lat:30.0808,lng:31.3231,images:[]},
-  {id:"h4",name:"Dr. Amira Hassan — GP",cat:"health",city:"Heliopolis",desc:"General practice. Speaks English and Arabic. Trusted by African students in Cairo.",rating:4.5,rc:41,top:false,african:false,icon:"👨‍⚕️",phone:"+20 100 000 0003",hours:"Mon–Sat 10am–6pm",price:"$$",verified:true,lat:30.0808,lng:31.3231,images:[]},
-  {id:"h5",name:"MindSpace Cairo",cat:"health",city:"Maadi",desc:"Mental health counselling in English. Therapists experienced with African expat students. Online sessions available.",rating:4.8,rc:29,top:false,african:false,icon:"🧠",phone:"+20 100 000 0004",hours:"Mon–Fri 9am–7pm",price:"$$",verified:true,lat:29.9602,lng:31.2569,images:[]},
-
-  // ── FOOD ────────────────────────────────────────────────────────────────────
-  {id:"f1",name:"Mama Chioma's Kitchen",cat:"food",subcat:"african",city:"Nasr City",desc:"Jollof, egusi, pounded yam, ofe onugbu. Tastes exactly like home. Run by a Nigerian mum.",rating:4.9,rc:84,top:true,african:true,icon:"🍲",phone:"+20 100 123 4567",hours:"11am–10pm",price:"$$",verified:true,lat:30.0626,lng:31.3219,images:[]},
-  {id:"f2",name:"Abyssinia Ethiopian Café",cat:"food",subcat:"african",city:"Zamalek",desc:"Injera, tibs, kitfo, tej. Coffee ceremony every Friday evening. Welcoming to all Africans.",rating:4.8,rc:61,top:false,african:true,icon:"☕",phone:"+20 102 345 6789",hours:"9am–10pm",price:"$$",verified:true,lat:30.0626,lng:31.2197,images:[]},
-  {id:"f3",name:"Accra Bites",cat:"food",subcat:"african",city:"New Cairo",desc:"Ghanaian food. Waakye, banku, tilapia, kontomire stew. Popular with West African students.",rating:4.7,rc:47,top:false,african:true,icon:"🍽️",phone:"+20 111 333 4444",hours:"12pm–9pm",price:"$",verified:true,lat:30.0269,lng:31.4397,images:[]},
-  {id:"f4",name:"Nile View Restaurant",cat:"food",subcat:"restaurant",city:"Downtown Cairo",desc:"Egyptian and international menu. Beautiful Nile view. Great for group dinners and celebrations.",rating:4.6,rc:102,top:false,african:false,icon:"🌊",phone:"+20 100 555 6666",hours:"12pm–12am",price:"$$$",verified:true,lat:30.0459,lng:31.2243,images:[]},
-  {id:"f5",name:"AfroFest Catering",cat:"food",subcat:"catering",city:"All Cairo",desc:"African food catering for events, parties and graduations. Nigerian, Ghanaian and Ethiopian menus. Min 20 people.",rating:4.8,rc:33,top:true,african:true,icon:"🥘",phone:"+20 100 777 8888",hours:"By appointment",price:"$$",verified:true,lat:30.0444,lng:31.2357,images:[]},
-
-  // ── TOURISM ─────────────────────────────────────────────────────────────────
-  {id:"t1",name:"Africa–Cairo Flights Hub",cat:"travel",subcat:"packages",city:"Cairo Airport",desc:"Best flight deals Lagos→Cairo, Accra→Cairo, Addis→Cairo, Khartoum→Cairo. Telegram group for live deals.",rating:4.8,rc:211,top:true,african:true,icon:"✈️",phone:"Telegram",hours:"24hrs",price:"$",verified:true,lat:30.1219,lng:31.4056,images:[]},
-  {id:"t2",name:"Egypt Visa Express",cat:"travel",subcat:"visa",city:"Cairo",desc:"Fast visa processing for African students and professionals. 48hr turnaround. Student, tourist and residence visas.",rating:4.6,rc:88,top:false,african:false,icon:"📋",phone:"+20 100 111 0000",hours:"Mon–Sat 9am–5pm",price:"$$",verified:true,lat:30.0577,lng:31.2392,images:[]},
-  {id:"t3",name:"Cairo Discovery Tours",cat:"travel",subcat:"tours",city:"Cairo",desc:"Pyramids, Sphinx, Egyptian Museum, Old Cairo, Khan el-Khalili. English and French guides. Group & private tours.",rating:4.9,rc:178,top:true,african:false,icon:"🏛️",phone:"+20 100 222 3333",hours:"Daily 7am–6pm",price:"$$",verified:true,lat:29.9773,lng:31.1325,images:[]},
-  {id:"t4",name:"QuickRide Airport Transfer",cat:"travel",subcat:"transfer",city:"Cairo Airport",desc:"Fixed price airport pickups. No hidden charges. Clean cars, English-speaking drivers. Available 24/7.",rating:4.7,rc:95,top:false,african:false,icon:"🚗",phone:"+20 100 444 5555",hours:"24hrs",price:"$$",verified:true,lat:30.1219,lng:31.4056,images:[]},
-
-  // ── HOUSING ─────────────────────────────────────────────────────────────────
-  {id:"ho1",name:"Nasr City Student Rooms",cat:"housing",subcat:"student",city:"Nasr City",desc:"Affordable furnished rooms for African students. Bills included. Mixed nationality building. Close to Al-Azhar.",rating:4.5,rc:42,top:false,african:true,icon:"🛏️",phone:"+20 111 444 3333",hours:"Always open",price:"$$",verified:true,lat:30.0594,lng:31.3287,images:[]},
-  {id:"ho2",name:"Maadi Expat Apartments",cat:"housing",subcat:"apartment",city:"Maadi",desc:"Modern furnished flats. English-speaking landlord. Monthly or yearly lease. Quiet neighbourhood, close to embassies.",rating:4.7,rc:29,top:true,african:false,icon:"🏠",phone:"+20 100 555 2222",hours:"Always open",price:"$$$",verified:true,lat:29.9602,lng:31.2569,images:[]},
-  {id:"ho3",name:"Heliopolis Furnished Flats",cat:"housing",subcat:"furnished",city:"Heliopolis",desc:"Furnished 1 and 2 bedroom apartments. Near Ain Shams University. Short and long stay options.",rating:4.6,rc:38,top:false,african:false,icon:"🏠",phone:"+20 111 666 7777",hours:"Always open",price:"$$",verified:true,lat:30.0808,lng:31.3231,images:[]},
-  {id:"ho4",name:"AfroCasa Housing",cat:"housing",subcat:"student",city:"New Cairo",desc:"Shared apartments designed for African students. African-owned. Close to MSA and nearby universities. Community feel.",rating:4.8,rc:51,top:true,african:true,icon:"🏠",phone:"+20 100 888 9999",hours:"Always open",price:"$",verified:true,lat:30.0269,lng:31.4397,images:[]},
-
-  // ── SCHOOLS ─────────────────────────────────────────────────────────────────
-  {id:"s1",name:"Universal Prime Agency",cat:"school",subcat:"agency",city:"Cairo / Global",desc:"Trusted admission agency. Fully funded, partial and self-funded scholarships to Egypt, Turkey and worldwide. Specialists in Al-Azhar, Cairo University and international admissions.",rating:4.9,rc:143,top:true,african:true,icon:"🏢",phone:"+90 212 000 0001",hours:"Mon–Fri 9am–6pm",price:"Free consult",verified:true,lat:30.0903,lng:31.3414,images:[]},
-  {id:"s2",name:"Al-Azhar University",cat:"school",subcat:"university",city:"Cairo",desc:"World-renowned Islamic university. Scholarships available for African students from Muslim-majority countries. Apply through official channels.",rating:4.8,rc:320,top:true,african:false,icon:"🕌",phone:"+20 2 261 24444",hours:"Mon–Thu 8am–3pm",price:"Scholarship/Fees",verified:true,lat:30.0459,lng:31.2627,images:[]},
-  {id:"s3",name:"Cairo University",cat:"school",subcat:"university",city:"Giza",desc:"Egypt's largest public university. Medicine, Engineering, Commerce, Law. African students welcome. English-taught programmes available.",rating:4.6,rc:180,top:false,african:false,icon:"🏛️",phone:"+20 2 356 79750",hours:"Mon–Thu 8am–3pm",price:"Fees vary",verified:true,lat:30.0269,lng:31.2089,images:[]},
-  {id:"s4",name:"Sheikh Zayed Arabic Centre",cat:"school",subcat:"language",city:"6th October City",desc:"Official Arabic language institute. Beginner to advanced Modern Standard Arabic and Egyptian dialect. Flexible schedules for students. Recognised certificates.",rating:4.7,rc:89,top:true,african:false,icon:"📖",phone:"+20 38 000 0001",hours:"Sun–Thu 8am–8pm",price:"$$",verified:true,lat:30.0172,lng:30.9397,images:[]},
-  {id:"s5",name:"ArabLink Language School",cat:"school",subcat:"language",city:"Nasr City",desc:"Intensive Arabic courses for foreign students. Fusha and Egyptian colloquial. Small classes, certified teachers. Popular with African university students.",rating:4.8,rc:67,top:false,african:false,icon:"📚",phone:"+20 100 000 0005",hours:"Daily 8am–7pm",price:"$$",verified:true,lat:30.0626,lng:31.3219,images:[]},
-  {id:"s6",name:"EduBridge Africa",cat:"school",subcat:"agency",city:"Cairo",desc:"University placement in Egypt and UAE. Visa assistance, airport pickup and student orientation included. Specialists in non-Arabic speaking programmes.",rating:4.7,rc:58,top:false,african:true,icon:"🎯",phone:"+20 100 999 8888",hours:"Mon–Sat 9am–5pm",price:"Commission",verified:true,lat:30.0444,lng:31.2357,images:[]},
-];
-
-const PLANS=[
-  {id:"basic",label:"Basic",icon:"🌱",price:0,period:"Free forever",color:"#7C6E52",
-   feats:["Browse all listings","Save favourite places","Community Q&A","Survival guides"]},
-  {id:"premium",label:"Premium",icon:"⭐",price:3,period:"per month",color:"#C8861A",
-   feats:["Everything in Basic","Ad-free experience","Priority Q&A answers","Exclusive city guides","Direct message businesses"]},
-  {id:"business",label:"Business",icon:"🏢",price:25,period:"per month",color:"#0A6B3E",
-   feats:["TOP listing badge","Appear first in category","Analytics dashboard","Verified badge","Featured on homepage","Direct contact button"]},
-  {id:"agency",label:"Agency Pro",icon:"🚀",price:60,period:"per month",color:"#2471A3",
-   feats:["Everything in Business","Priority TOP badge","Student leads direct","Banner ad placement","Monthly report","Dedicated account manager"]},
-];
-
-const TIPS=[
-  {icon:"🏢",type:"gold",title:"Use a Trusted Agency",text:"Agencies like Universal Prime help with fully, partially or self-funded admissions. Always verify they are licensed and get written contracts."},
-  {icon:"📄",type:"info",title:"Documents to Prepare",text:"Passport (6-month validity), admission letter, yellow fever card, bank statement, accommodation proof, 4 passport photos."},
-  {icon:"🏠",type:"gold",title:"Secure Housing First",text:"Book housing before you arrive. Nasr City and Maadi are top areas. Ask in Xairod community for trusted landlords."},
-  {icon:"✈️",type:"info",title:"Flight Tips",text:"Book 3+ weeks ahead. Join the Africa–Cairo Flights Hub on Xairod for deals. Budget $250–$400 return."},
-  {icon:"⚠️",type:"warn",title:"Taxi & Agency Scams",text:"Use Uber or Careem only. For agencies, never pay 100% upfront — use instalments and always get receipts."},
-  {icon:"💸",type:"info",title:"Money Transfer",text:"Use Wise or Western Union. Avoid airport exchange desks — terrible rates. City centre bureaux are much better."},
-];
-
-const AVOID=[
-  {icon:"🏢",type:"warn",title:"Fake Agencies",text:"Always verify agency registration. Never pay 100% fees upfront. Get signed contracts and check Xairod reviews first."},
-  {icon:"🚕",type:"warn",title:"Unlicensed Taxis",text:"Always use Uber or Careem. Never negotiate with random taxis — massively overcharged as a foreigner."},
-  {icon:"🏪",type:"warn",title:"Tourist Trap Shops",text:"Near Pyramids and Khan El-Khalili prices are 5x for foreigners. Shop in local neighbourhoods."},
-  {icon:"🏘️",type:"tip",title:"Nasr City vs Maadi",text:"Nasr City is cheaper and closer to Al-Azhar. Maadi is quieter and more international. Choose based on your university."},
-];
-
-const ARRIVE=[
-  {icon:"🏢",type:"gold",title:"Step 1: Choose Your Agency",text:"Find agencies like Universal Prime on Xairod. Compare funding options. Get written offers before paying anything."},
-  {icon:"📄",type:"gold",title:"Step 2: Documents",text:"Passport, admission letter, yellow fever card, bank statement, accommodation proof, 4 passport photos (white background)."},
-  {icon:"🏠",type:"info",title:"Step 3: Book Housing",text:"Use Xairod's Housing category to find verified rooms in Nasr City or Maadi before you arrive."},
-  {icon:"✈️",type:"info",title:"Step 4: Book Flight",text:"Cairo airport (CAI). Check Africa–Cairo Flights Hub for best deals. Book 3+ weeks ahead."},
-];
-
-const QA=[
-  {id:"1",a:"Chukwuemeka O.",q:"Is Universal Prime a legit agency for Egypt admissions?",r:8,area:"Agencies",t:"1h ago",done:true},
-  {id:"2",a:"Abena K.",q:"What's the difference between fully funded and partial scholarship?",r:6,area:"Schools",t:"3h ago",done:true},
-  {id:"3",a:"Musa A.",q:"Best area to rent near Al-Azhar University?",r:12,area:"Housing",t:"1d ago",done:true},
-  {id:"4",a:"Amira S.",q:"Does Universal Prime help with Turkey admissions too?",r:5,area:"Agencies",t:"2d ago",done:false},
-];
-
-
-// ─── TRANSLATIONS (English / Arabic) ────────────────────────────────────────
-const T={
-  en:{
-    home:"Home",explore:"Explore",tips:"Tips",community:"Community",
-    plans:"Plans",profile:"Profile",groups:"Groups",
-    search:"Search agencies, schools, food…",
-    notifications:"Notifications",dismiss:"Dismiss",
-    language:"ع",seeAll:"See all",categories:"Categories",
-    agencySpot:"Agency Spotlight",featured:"Featured",
-    joinTelegram:"Join our Telegram",joinCommunity:"Join the Xairod Family 🌍",
-    communityDesc:"Ask about agencies, schools, housing and more.",
-    shareTitle:"Xairod — Your Home Away From Home",
-    shareText:"Find African food, trusted agencies and housing in Cairo.",
-    shareBtn:"Share Xairod 🌍",
-    findAgency:"Find Agency",findAgencyDesc:"Verified agencies matched to your university",
-    universities:"Universities",allUniversities:"All Universities",
-    groupsTitle:"Community Groups",joinGroup:"Join",leaveGroup:"Leave",
-    myGroups:"My Groups",exploreGroups:"Explore Groups",
-    notifEmpty:"No notifications yet",
-  },
-  ar:{
-    home:"الرئيسية",explore:"استكشف",tips:"نصائح",community:"المجتمع",
-    plans:"الخطط",profile:"الملف",groups:"المجموعات",
-    search:"ابحث عن وكالات ومدارس وطعام…",
-    notifications:"الإشعارات",dismiss:"إغلاق",
-    language:"EN",seeAll:"عرض الكل",categories:"الفئات",
-    agencySpot:"وكالة مميزة",featured:"مميز",
-    joinTelegram:"انضم إلى تيليغرام",joinCommunity:"انضم إلى عائلة Xairod 🌍",
-    communityDesc:"اسأل عن الوكالات والمدارس والسكن والمزيد.",
-    shareTitle:"Xairod — بيتك بعيداً عن البيت",
-    shareText:"ابحث عن طعام أفريقي ووكالات موثوقة وسكن في القاهرة.",
-    shareBtn:"شارك Xairod 🌍",
-    findAgency:"ابحث عن وكالة",findAgencyDesc:"وكالات موثوقة مطابقة لجامعتك",
-    universities:"الجامعات",allUniversities:"كل الجامعات",
-    groupsTitle:"مجموعات المجتمع",joinGroup:"انضم",leaveGroup:"اخرج",
-    myGroups:"مجموعاتي",exploreGroups:"استكشف المجموعات",
-    notifEmpty:"لا إشعارات بعد",
-  }
-};
-
-// ─── UNIVERSITIES & AGENCY MATCHES ────────────────────────────────────────
-const UNIVERSITIES=[
-  {id:"azhar",name:"Al-Azhar University",name_ar:"جامعة الأزهر",emoji:"🕌",city:"Cairo",country:"Egypt"},
-  {id:"cairo",name:"Cairo University",name_ar:"جامعة القاهرة",emoji:"🏛️",city:"Giza",country:"Egypt"},
-  {id:"ain_shams",name:"Ain Shams University",name_ar:"جامعة عين شمس",emoji:"☀️",city:"Cairo",country:"Egypt"},
-  {id:"msa",name:"MSA University",name_ar:"جامعة MSA",emoji:"🎓",city:"6th October",country:"Egypt"},
-  {id:"istanbul",name:"Istanbul University",name_ar:"جامعة إسطنبول",emoji:"🇹🇷",city:"Istanbul",country:"Turkey"},
-  {id:"malaysia",name:"IIUM Malaysia",name_ar:"الجامعة الإسلامية ماليزيا",emoji:"🇲🇾",city:"Kuala Lumpur",country:"Malaysia"},
-];
-
-// ─── GROUPS ────────────────────────────────────────────────────────────────
-const GROUPS=[
-  {id:"ng",name:"Nigerians in Cairo",name_ar:"النيجيريون في القاهرة",emoji:"🇳🇬",members:247,category:"nationality",joined:false},
-  {id:"gh",name:"Ghanaians in Egypt",name_ar:"الغانيون في مصر",emoji:"🇬🇭",members:89,category:"nationality",joined:false},
-  {id:"et",name:"Ethiopians in Cairo",name_ar:"الإثيوبيون في القاهرة",emoji:"🇪🇹",members:134,category:"nationality",joined:false},
-  {id:"nasr",name:"Nasr City Residents",name_ar:"سكان مدينة نصر",emoji:"🏙️",members:412,category:"city",joined:false},
-  {id:"azhar_s",name:"Al-Azhar Students",name_ar:"طلاب الأزهر",emoji:"🎓",members:876,category:"interest",joined:false},
-  {id:"food",name:"African Foodies Cairo",name_ar:"محبو الطعام الأفريقي",emoji:"🍲",members:203,category:"interest",joined:false},
-  {id:"jobs",name:"Cairo Job Seekers",name_ar:"الباحثون عن عمل",emoji:"💼",members:156,category:"interest",joined:false},
-  {id:"ke",name:"Kenyan Community Egypt",name_ar:"مجتمع الكينيين",emoji:"🇰🇪",members:62,category:"nationality",joined:false},
-];
-
-// ════════════════════════════════════════════════════════════════════════════
-// NOTIFICATION SYSTEM
-// ════════════════════════════════════════════════════════════════════════════
 function playNotifSound(){
   try{
     const ctx=new(window.AudioContext||window.webkitAudioContext)();
@@ -3402,8 +3367,13 @@ function StarsBg(){
 }
 
 // ─── CARD COMPONENT ───────────────────────────────────────────────────────────
-function Card({item,onOpen,saved,onSave}){
+function Card({item,onOpen,saved,onSave,onImpression}){
   const cat=CATS.find(c=>c.id===item.cat)||CATS[0];
+  // Fire impression once on mount
+  const firedRef=useRef(false);
+  useEffect(()=>{
+    if(!firedRef.current&&onImpression){firedRef.current=true;onImpression();}
+  },[]);
   return(
     <div className="card" onClick={()=>onOpen(item)} style={{borderLeft:`3px solid ${cat.c}`}}>
       <div className="card-icon" style={{background:`${cat.c}18`}}>{item.icon}</div>
@@ -4619,6 +4589,156 @@ function OnboardingPreferences({user,onDone}){
   );
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// XAIROD RECOMMENDATION ENGINE v1
+// Rule-based scoring. Every signal is documented.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * scoreListings(listings, prefs, savedIds, viewedIds)
+ *
+ * Weights:
+ *   Category match   30%
+ *   Quality          20%
+ *   Location         20%
+ *   Budget           20%
+ *   Freshness        10%
+ *
+ * Returns sorted array with .score attached.
+ * Never fabricates data — missing fields use documented defaults.
+ */
+function scoreListings(listings, prefs={}, savedIds=new Set(), viewedIds=[]){
+  if(!listings||listings.length===0) return [];
+
+  const interests  = prefs.interests  || [];  // ["housing","health",...]
+  const area       = prefs.area       || "";   // "Nasr City", "Maadi", etc.
+  const budget     = prefs.budget     || null; // "low"|"mid"|"high"|null
+  const now        = Date.now();
+  const FRESHNESS_DAYS = 14;
+
+  const BUDGET_MAP = {
+    low:  ["$","free","low"],
+    mid:  ["$$","mid","moderate"],
+    high: ["$$$","high","premium"],
+  };
+
+  const scored = listings
+    .filter(l => l.status === "active" || !l.status) // never show inactive
+    .map(l => {
+      // ── 1. Category match (0–100) ──────────────────────────────────────
+      let catScore = 0;
+      if(interests.length === 0){
+        catScore = 50; // no prefs → neutral, show everything equally
+      } else {
+        const catId = l.cat || l.category || "";
+        catScore = interests.includes(catId) ? 100 : 0;
+        // Partial match: "health" interest matches "medical_tourism" cat
+        if(catScore===0 && interests.includes("health") && catId==="travel") catScore=40;
+        if(catScore===0 && interests.includes("medical_tourism") && catId==="health") catScore=40;
+      }
+
+      // ── 2. Quality (0–100) ────────────────────────────────────────────
+      // rating is 0–5; review_count adds credibility; verified adds 10pts
+      const rating      = l.rating || 0;        // missing → 0, not assumed good
+      const reviewCount = l.review_count || 0;
+      const verified    = l.verified ? 10 : 0;
+      const ratingNorm  = (rating / 5) * 80;    // 0–80
+      // Review confidence: caps at 10 reviews for full 10pts
+      const reviewConf  = Math.min(reviewCount, 10) * 1;
+      let qualScore = Math.min(100, ratingNorm + reviewConf + verified);
+      if(rating === 0 && reviewCount === 0) qualScore = 40; // new/unreviewed: neutral
+
+      // ── 3. Location (0–100) ───────────────────────────────────────────
+      let locScore = 50; // default: no preference = neutral
+      if(area){
+        const listingCity = (l.city || l.address || "").toLowerCase();
+        const userArea    = area.toLowerCase();
+        if(listingCity.includes(userArea) || userArea.includes(listingCity)){
+          locScore = 100;
+        } else if(listingCity.includes("cairo") || listingCity === ""){
+          locScore = 60; // general Cairo listing — acceptable
+        } else {
+          locScore = 20; // different city
+        }
+      }
+
+      // ── 4. Budget (0–100) ─────────────────────────────────────────────
+      let budgetScore = 50; // no preference = neutral
+      if(budget && l.price){
+        const priceStr  = String(l.price).toLowerCase();
+        const matches   = (BUDGET_MAP[budget]||[]).some(k => priceStr.includes(k));
+        budgetScore     = matches ? 100 : 30;
+      }
+
+      // ── 5. Freshness (0–100) ──────────────────────────────────────────
+      let freshScore = 50;
+      if(l.created_at){
+        const ageDays = (now - new Date(l.created_at).getTime()) / 86400000;
+        if(ageDays <= FRESHNESS_DAYS){
+          freshScore = 100 - (ageDays / FRESHNESS_DAYS) * 50; // 100→50 over 14 days
+        } else {
+          freshScore = Math.max(10, 50 - (ageDays - FRESHNESS_DAYS) * 0.5);
+        }
+      }
+
+      // ── Already viewed penalty ────────────────────────────────────────
+      const viewedPenalty = viewedIds.includes(l.id) ? 15 : 0;
+
+      // ── Already saved boost ────────────────────────────────────────────
+      const savedBoost = savedIds.has(l.id) ? 5 : 0;
+
+      // ── Weighted composite ────────────────────────────────────────────
+      const total = (
+        catScore    * 0.30 +
+        qualScore   * 0.20 +
+        locScore    * 0.20 +
+        budgetScore * 0.20 +
+        freshScore  * 0.10
+      ) - viewedPenalty + savedBoost;
+
+      return {...l, _score: Math.round(Math.max(0, Math.min(100, total)))};
+    });
+
+  // Sort descending by score
+  scored.sort((a,b) => b._score - a._score);
+
+  // ── Controlled diversification: max 2 per category in top 6 ─────────────
+  const topN = 12;
+  const catCounts = {};
+  const diversified = [];
+  const remainder   = [];
+  for(const item of scored){
+    const cat = item.cat || item.category || "other";
+    catCounts[cat] = (catCounts[cat]||0) + 1;
+    if(diversified.length < topN && catCounts[cat] <= 2){
+      diversified.push(item);
+    } else {
+      remainder.push(item);
+    }
+  }
+  return [...diversified, ...remainder];
+}
+
+// ── Helper: get "new" listings (last 14 days) ──────────────────────────────
+function getNewListings(listings){
+  const cutoff = Date.now() - 14*86400000;
+  return listings
+    .filter(l => l.created_at && new Date(l.created_at).getTime() > cutoff)
+    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0,6);
+}
+
+// ── Helper: get "continue exploring" (recently viewed, not booked) ──────────
+function getContinueExploring(listings, viewedIds){
+  if(!viewedIds||viewedIds.length===0) return [];
+  const listingMap = Object.fromEntries(listings.map(l=>[l.id,l]));
+  return viewedIds
+    .slice(0,6)
+    .map(id => listingMap[id])
+    .filter(Boolean);
+}
+
 function MainApp({user,onLogout}){
   const[tab,setTab]=useState("home");
   const[modal,setModal]=useState(null);
@@ -4775,6 +4895,10 @@ function MainApp({user,onLogout}){
   ];
   const[saved,setSaved]=useState(new Set());
   const[plan,setPlan]=useState("basic");
+  // ── Discovery Engine state ────────────────────────────────────────────────
+  const[userPrefs,setUserPrefs]=useState({interests:[],area:"",budget:null});
+  const[recentlyViewed,setRecentlyViewed]=useState([]);
+  const[discoveryReady,setDiscoveryReady]=useState(false);
   const[srch,setSrch]=useState("");
   const[cat,setCat]=useState("all");
   const[srt,setSrt]=useState("rating");
@@ -4824,7 +4948,7 @@ function MainApp({user,onLogout}){
   useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=0;},[tab]);
   const toggleSave=async id=>{
     const wasSaved=saved.has(id);
-    trackEvent(wasSaved?"listing_unsaved":"listing_saved",{listingId:id});
+    trackEvent(wasSaved?"business_unsaved":"business_saved",{listing_id:id},user?.id);
     // Update UI immediately for instant feedback
     setSaved(prev=>{const next=new Set(prev);next.has(id)?next.delete(id):next.add(id);return next;});
     // Persist to Supabase
@@ -4945,7 +5069,7 @@ function MainApp({user,onLogout}){
         <div className="main-scroll" ref={scrollRef}>
 
         {/* ── HOME ── */}
-        {tab==="home"&&(
+        {tab==="home"&&(trackEvent("feed_viewed",{},user?.id),true)&&(
           <div className="page-pad">
             {/* Hero */}
             <div className="hero">
@@ -5016,6 +5140,138 @@ function MainApp({user,onLogout}){
                 <span style={{color:"var(--sub)",fontSize:18,flexShrink:0}}>→</span>
               </button>
             </div>
+
+            {/* ══ PERSONALIZED DISCOVERY SECTIONS ══════════════════════════ */}
+
+            {/* ── Picked for You ─────────────────────────────────────────── */}
+            {(()=>{
+              if(!user) return null;
+              const ranked=scoreListings(listings,userPrefs,saved,recentlyViewed).slice(0,6);
+              if(ranked.length===0) return null;
+              return(
+                <div className="section" key="picked">
+                  <div className="sec-title">✦ Picked for You</div>
+                  <div className="cards-row">
+                    {ranked.map(item=>(
+                      <Card key={item.id} item={item} saved={saved.has(item.id)}
+                        onSave={()=>toggleSave(item.id)}
+                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
+                        onImpression={()=>trackEvent("recommendation_impression",{listing_id:item.id,score:item._score,section:"picked_for_you"},user?.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Continue Exploring ─────────────────────────────────────── */}
+            {(()=>{
+              if(!user||recentlyViewed.length===0) return null;
+              const recent=getContinueExploring(listings,recentlyViewed);
+              if(recent.length===0) return null;
+              return(
+                <div className="section" key="continue">
+                  <div className="sec-title">👁 Continue Exploring</div>
+                  <div className="cards-row">
+                    {recent.map(item=>(
+                      <Card key={item.id} item={item} saved={saved.has(item.id)}
+                        onSave={()=>toggleSave(item.id)}
+                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
+                        onImpression={()=>trackEvent("recommendation_impression",{listing_id:item.id,section:"continue_exploring"},user?.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── New on Xairod ───────────────────────────────────────────── */}
+            {(()=>{
+              const newListings=getNewListings(listings);
+              if(newListings.length===0) return null;
+              return(
+                <div className="section" key="new">
+                  <div className="sec-title">🆕 New on Xairod</div>
+                  <div className="cards-row">
+                    {newListings.map(item=>(
+                      <Card key={item.id} item={item} saved={saved.has(item.id)}
+                        onSave={()=>toggleSave(item.id)}
+                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
+                        onImpression={()=>trackEvent("recommendation_impression",{listing_id:item.id,section:"new_on_xairod"},user?.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Based on Your Interests ─────────────────────────────────── */}
+            {(()=>{
+              if(!user||!userPrefs.interests||userPrefs.interests.length===0) return null;
+              const interest=userPrefs.interests[0];
+              const matched=listings.filter(l=>(l.cat||l.category)===interest).slice(0,6);
+              if(matched.length===0) return null;
+              const catLabels={housing:"🏠 Housing",health:"🏥 Health",food:"🍛 Food",schools:"🎓 Schools",community:"🌍 Community",medical_tourism:"✈️ Medical Tourism"};
+              return(
+                <div className="section" key="interest">
+                  <div className="sec-title">{catLabels[interest]||"Based on Your Interests"}</div>
+                  <div className="cards-row">
+                    {matched.map(item=>(
+                      <Card key={item.id} item={item} saved={saved.has(item.id)}
+                        onSave={()=>toggleSave(item.id)}
+                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
+                        onImpression={()=>trackEvent("recommendation_impression",{listing_id:item.id,section:"based_on_interests",interest},user?.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── My Saved Listings ──────────────────────────────────────── */}
+            {(()=>{
+              if(!user||saved.size===0) return null;
+              const savedListings=listings.filter(l=>saved.has(l.id)).slice(0,6);
+              if(savedListings.length===0) return null;
+              return(
+                <div className="section" key="mysaved">
+                  <div className="sec-title">🔖 My Saved</div>
+                  <div className="cards-row">
+                    {savedListings.map(item=>(
+                      <Card key={item.id} item={item} saved={true}
+                        onSave={()=>toggleSave(item.id)}
+                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Popular (highest rated + most saved) ───────────────────── */}
+            {(()=>{
+              const popular=listings
+                .filter(l=>l.rating>=4||(l.review_count||0)>=3)
+                .sort((a,b)=>(b.rating||0)-(a.rating||0))
+                .slice(0,6);
+              if(popular.length===0) return null;
+              return(
+                <div className="section" key="popular">
+                  <div className="sec-title">⭐ Popular in Cairo</div>
+                  <div className="cards-row">
+                    {popular.map(item=>(
+                      <Card key={item.id} item={item} saved={saved.has(item.id)}
+                        onSave={()=>toggleSave(item.id)}
+                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
+                        onImpression={()=>trackEvent("recommendation_impression",{listing_id:item.id,section:"popular"},user?.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ══ END DISCOVERY SECTIONS ════════════════════════════════════ */}
 
             {/* Featured listings */}
             <div className="section">
