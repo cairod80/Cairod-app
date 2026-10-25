@@ -5069,7 +5069,7 @@ function MainApp({user,onLogout}){
         <div className="main-scroll" ref={scrollRef}>
 
         {/* ── HOME ── */}
-        {tab==="home"&&(trackEvent("feed_viewed",{},user?.id),true)&&(
+        {tab==="home"&&(()=>{trackEvent("feed_viewed",{},user?.id);return true;})()&&(
           <div className="page-pad">
             {/* Hero */}
             <div className="hero">
