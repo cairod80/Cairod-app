@@ -4739,6 +4739,60 @@ function getContinueExploring(listings, viewedIds){
     .filter(Boolean);
 }
 
+
+// ── DISCOVERY FEED (safe, no IIFEs in JSX) ───────────────────────────────────
+function DiscoveryFeed({listings,userPrefs,saved,recentlyViewed,onOpen,onSave,onImpression,user}){
+  if(!listings||listings.length===0) return null;
+  const prefs   = userPrefs||{interests:[],area:"",budget:null};
+  const savedSet= saved instanceof Set ? saved : new Set(saved||[]);
+  const viewed  = recentlyViewed||[];
+  const ranked     = scoreListings(listings,prefs,savedSet,viewed);
+  const pickedFor  = ranked.slice(0,6);
+  const newItems   = getNewListings(listings);
+  const continueEx = getContinueExploring(listings,viewed);
+  const popular    = [...listings]
+    .filter(l=>(l.rating||0)>=4||(l.review_count||0)>=3)
+    .sort((a,b)=>(b.rating||0)-(a.rating||0)).slice(0,6);
+  const interest   = prefs.interests?.[0]||null;
+  const catLabel   = {housing:"🏠 Housing",health:"🏥 Health",food:"🍛 Food",
+    schools:"🎓 Schools",community:"🌍 Community",medical_tourism:"✈️ Medical Tourism"
+  }[interest]||"Based on Your Interests";
+  const interested = interest
+    ? listings.filter(l=>(l.cat||l.category)===interest).slice(0,6) : [];
+  const savedItems = listings.filter(l=>savedSet.has(l.id)).slice(0,6);
+
+  const Sec=({title,items,section})=>{
+    if(!items||items.length===0) return null;
+    return(
+      <div className="section">
+        <div className="sec-title">{title}</div>
+        <div className="cards-row">
+          {items.map(item=>(
+            <Card key={item.id} item={item}
+              saved={savedSet.has(item.id)}
+              onSave={()=>onSave(item.id)}
+              onOpen={()=>onOpen(item)}
+              onImpression={()=>{ try{onImpression(item.id,section);}catch(e){} }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return(
+    <>
+      {user&&<Sec title="✦ Picked for You"    items={pickedFor}  section="picked_for_you"/>}
+      {user&&<Sec title="👁 Continue Exploring" items={continueEx} section="continue_exploring"/>}
+      <Sec title="🆕 New on Xairod"      items={newItems}   section="new_on_xairod"/>
+      {user&&interested.length>0&&<Sec title={catLabel} items={interested} section="based_on_interests"/>}
+      <Sec title="⭐ Popular in Cairo"   items={popular}    section="popular"/>
+      {user&&<Sec title="🔖 My Saved"  items={savedItems} section="my_saved"/>}
+    </>
+  );
+}
+
+
 function MainApp({user,onLogout}){
   const[tab,setTab]=useState("home");
   const[modal,setModal]=useState(null);
@@ -5069,7 +5123,7 @@ function MainApp({user,onLogout}){
         <div className="main-scroll" ref={scrollRef}>
 
         {/* ── HOME ── */}
-        {tab==="home"&&(()=>{trackEvent("feed_viewed",{},user?.id);return true;})()&&(
+        {tab==="home"&&(
           <div className="page-pad">
             {/* Hero */}
             <div className="hero">
@@ -5141,137 +5195,17 @@ function MainApp({user,onLogout}){
               </button>
             </div>
 
-            {/* ══ PERSONALIZED DISCOVERY SECTIONS ══════════════════════════ */}
-
-            {/* ── Picked for You ─────────────────────────────────────────── */}
-            {(()=>{
-              if(!user) return null;
-              const ranked=scoreListings(listings,userPrefs,saved,recentlyViewed).slice(0,6);
-              if(ranked.length===0) return null;
-              return(
-                <div className="section" key="picked">
-                  <div className="sec-title">✦ Picked for You</div>
-                  <div className="cards-row">
-                    {ranked.map(item=>(
-                      <Card key={item.id} item={item} saved={saved.has(item.id)}
-                        onSave={()=>toggleSave(item.id)}
-                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
-                        onImpression={()=>trackEvent("recommendation_impression",{listing_id:item.id,score:item._score,section:"picked_for_you"},user?.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── Continue Exploring ─────────────────────────────────────── */}
-            {(()=>{
-              if(!user||recentlyViewed.length===0) return null;
-              const recent=getContinueExploring(listings,recentlyViewed);
-              if(recent.length===0) return null;
-              return(
-                <div className="section" key="continue">
-                  <div className="sec-title">👁 Continue Exploring</div>
-                  <div className="cards-row">
-                    {recent.map(item=>(
-                      <Card key={item.id} item={item} saved={saved.has(item.id)}
-                        onSave={()=>toggleSave(item.id)}
-                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
-                        onImpression={()=>trackEvent("recommendation_impression",{listing_id:item.id,section:"continue_exploring"},user?.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── New on Xairod ───────────────────────────────────────────── */}
-            {(()=>{
-              const newListings=getNewListings(listings);
-              if(newListings.length===0) return null;
-              return(
-                <div className="section" key="new">
-                  <div className="sec-title">🆕 New on Xairod</div>
-                  <div className="cards-row">
-                    {newListings.map(item=>(
-                      <Card key={item.id} item={item} saved={saved.has(item.id)}
-                        onSave={()=>toggleSave(item.id)}
-                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
-                        onImpression={()=>trackEvent("recommendation_impression",{listing_id:item.id,section:"new_on_xairod"},user?.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── Based on Your Interests ─────────────────────────────────── */}
-            {(()=>{
-              if(!user||!userPrefs.interests||userPrefs.interests.length===0) return null;
-              const interest=userPrefs.interests[0];
-              const matched=listings.filter(l=>(l.cat||l.category)===interest).slice(0,6);
-              if(matched.length===0) return null;
-              const catLabels={housing:"🏠 Housing",health:"🏥 Health",food:"🍛 Food",schools:"🎓 Schools",community:"🌍 Community",medical_tourism:"✈️ Medical Tourism"};
-              return(
-                <div className="section" key="interest">
-                  <div className="sec-title">{catLabels[interest]||"Based on Your Interests"}</div>
-                  <div className="cards-row">
-                    {matched.map(item=>(
-                      <Card key={item.id} item={item} saved={saved.has(item.id)}
-                        onSave={()=>toggleSave(item.id)}
-                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
-                        onImpression={()=>trackEvent("recommendation_impression",{listing_id:item.id,section:"based_on_interests",interest},user?.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── My Saved Listings ──────────────────────────────────────── */}
-            {(()=>{
-              if(!user||saved.size===0) return null;
-              const savedListings=listings.filter(l=>saved.has(l.id)).slice(0,6);
-              if(savedListings.length===0) return null;
-              return(
-                <div className="section" key="mysaved">
-                  <div className="sec-title">🔖 My Saved</div>
-                  <div className="cards-row">
-                    {savedListings.map(item=>(
-                      <Card key={item.id} item={item} saved={true}
-                        onSave={()=>toggleSave(item.id)}
-                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── Popular (highest rated + most saved) ───────────────────── */}
-            {(()=>{
-              const popular=listings
-                .filter(l=>l.rating>=4||(l.review_count||0)>=3)
-                .sort((a,b)=>(b.rating||0)-(a.rating||0))
-                .slice(0,6);
-              if(popular.length===0) return null;
-              return(
-                <div className="section" key="popular">
-                  <div className="sec-title">⭐ Popular in Cairo</div>
-                  <div className="cards-row">
-                    {popular.map(item=>(
-                      <Card key={item.id} item={item} saved={saved.has(item.id)}
-                        onSave={()=>toggleSave(item.id)}
-                        onOpen={()=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id,cat:item.cat||item.category},user?.id);}}
-                        onImpression={()=>trackEvent("recommendation_impression",{listing_id:item.id,section:"popular"},user?.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ══ END DISCOVERY SECTIONS ════════════════════════════════════ */}
+            {/* ── Personalized Discovery ── */}
+            <DiscoveryFeed
+              listings={listings}
+              userPrefs={userPrefs}
+              saved={saved}
+              recentlyViewed={recentlyViewed}
+              onOpen={(item)=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id},user?.id);}}
+              onSave={toggleSave}
+              onImpression={(lid,sec)=>trackEvent("recommendation_impression",{listing_id:lid,section:sec},user?.id)}
+              user={user}
+            />
 
             {/* Featured listings */}
             <div className="section">
