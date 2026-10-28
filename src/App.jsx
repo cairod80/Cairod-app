@@ -4931,9 +4931,22 @@ function MainApp({user,onLogout}){
 
     // 3. Load notifications
 
-    // 4. Load user plan from profile
-    supabase.from("profiles").select("plan").eq("id",user.id).single()
-      .then(({data})=>{ if(data?.plan) setPlan(data.plan); });
+    // 4. Load user plan + discovery preferences from profile
+    supabase.from("profiles")
+      .select("plan,service_interests,country_of_origin,recently_viewed")
+      .eq("id",user.id).single()
+      .then(({data})=>{
+        if(data?.plan) setPlan(data.plan);
+        if(data){
+          setUserPrefs({
+            interests:data.service_interests||[],
+            area:data.country_of_origin||"",
+            budget:null,
+          });
+          setRecentlyViewed(data.recently_viewed||[]);
+        }
+        setDiscoveryReady(true);
+      });
 
     return()=>{};
   // eslint-disable-next-line react-hooks/exhaustive-deps
