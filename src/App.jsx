@@ -63,6 +63,70 @@ const uploadChatFile=async(file,folder)=>{
 
 const PAYSTACK_CURRENCY   = "NGN"; // Change to "EGP" when Xairod Paystack is ready
 
+// ── LISTING CATEGORIES ────────────────────────────────────────────────────────
+const CATS=[
+  {id:"housing",      label:"Housing",         icon:"🏠", c:"#C8861A"},
+  {id:"health",       label:"Health",           icon:"🏥", c:"#C0392B"},
+  {id:"food",         label:"African Food",     icon:"🍲", c:"#0A6B3E"},
+  {id:"schools",      label:"Schools",          icon:"🎓", c:"#2471A3"},
+  {id:"community",    label:"Community",        icon:"🌍", c:"#8E44AD"},
+  {id:"medical_tourism",label:"Medical Tourism",icon:"✈️", c:"#C8861A"},
+  {id:"other",        label:"Other",            icon:"🏢", c:"#555"},
+];
+
+// ── COMMUNITY GROUPS (default) ────────────────────────────────────────────────
+const GROUPS=[
+  {id:"ng", name:"🇳🇬 Nigerians in Cairo",   members:0, category:"community"},
+  {id:"gh", name:"🇬🇭 Ghanaians in Cairo",   members:0, category:"community"},
+  {id:"et", name:"🇪🇹 Ethiopians in Cairo",  members:0, category:"community"},
+  {id:"ke", name:"🇰🇪 Kenyans in Cairo",     members:0, category:"community"},
+  {id:"sn", name:"🇸🇳 Senegalese in Cairo",  members:0, category:"community"},
+  {id:"gen",name:"🌍 All Africans in Cairo", members:0, category:"community"},
+];
+
+// ── STUDENT ARRIVAL TIPS ──────────────────────────────────────────────────────
+const ARRIVE=[
+  {tip:"Get a local SIM card (Vodafone or Orange) at Cairo Airport before leaving arrivals."},
+  {tip:"Download Uber or Careem before you land — do not take unmarked taxis from the airport."},
+  {tip:"Exchange only a small amount of currency at the airport. Better rates available in the city."},
+  {tip:"Al-Azhar University registration opens specific weeks — confirm your exact dates before flying."},
+  {tip:"Nasr City and Abbassia are the most popular areas for African students near Al-Azhar."},
+  {tip:"Learn basic Arabic numbers before you arrive — prices and addresses will be easier to understand."},
+  {tip:"Bring printed copies of all your documents — university acceptance, passport, visa, photos."},
+  {tip:"Join the Xairod community to connect with other Africans already in Cairo before you arrive."},
+];
+
+// ── WHAT TO AVOID IN CAIRO ────────────────────────────────────────────────────
+const AVOID=[
+  {tip:"Avoid paying housing deposits to agents you only know from WhatsApp — always pay through Xairod escrow."},
+  {tip:"Do not accept rides from unofficial drivers outside the airport or train stations."},
+  {tip:"Avoid flashing expensive phones or jewellery in crowded markets."},
+  {tip:"Do not drink tap water — bottled water is widely available and very cheap."},
+  {tip:"Avoid signing any rental agreement without reading it carefully or having it translated."},
+  {tip:"Do not exchange money at hotels — rates are very poor. Use exchange offices or ATMs."},
+  {tip:"Avoid sharing your passport number or national ID details with strangers."},
+  {tip:"Do not rely on a single WhatsApp contact for housing, health or school referrals — verify through Xairod."},
+];
+
+// ── UNIVERSITIES (initial list — supplemented from Supabase) ─────────────────
+const UNIVERSITIES=[
+  {id:"al-azhar",    name:"Al-Azhar University",           city:"Cairo",   type:"Islamic/General"},
+  {id:"cairo-uni",   name:"Cairo University",              city:"Cairo",   type:"Public"},
+  {id:"ain-shams",   name:"Ain Shams University",          city:"Cairo",   type:"Public"},
+  {id:"agu",         name:"The American University Cairo", city:"Cairo",   type:"Private"},
+  {id:"arab-acad",   name:"Arab Academy for Science",      city:"Cairo",   type:"Private"},
+  {id:"future-uni",  name:"Future University in Egypt",    city:"Cairo",   type:"Private"},
+  {id:"nile-uni",    name:"Nile University",               city:"Cairo",   type:"Private"},
+  {id:"bue",         name:"British University in Egypt",   city:"Cairo",   type:"Private"},
+];
+
+// ── COMMUNITY Q&A (seed data — supplemented from Supabase) ───────────────────
+const QA=[
+  {id:"q1", q:"What is the best area to live near Al-Azhar?", a:"Nasr City and Abbassia are closest. Most African students prefer Nasr City for the community feel and affordable rents.", votes:12},
+  {id:"q2", q:"Is it safe for Africans to live in Cairo?", a:"Yes, Cairo is generally safe. Nasr City, Maadi and Heliopolis have large African communities. Use Xairod for verified housing.", votes:9},
+  {id:"q3", q:"Where can I find Nigerian food in Cairo?", a:"Several Nigerian restaurants operate in Nasr City and downtown Cairo. Search 'Nigerian food' in Xairod to find rated options.", votes:7},
+];
+
 // ── PAYSTACK PAYMENT HOOK ─────────────────────────────────────────────────────
 function usePaystack(){
   const[ready,setReady]=useState(!!window.PaystackPop);
