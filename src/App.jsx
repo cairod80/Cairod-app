@@ -63,69 +63,146 @@ const uploadChatFile=async(file,folder)=>{
 
 const PAYSTACK_CURRENCY   = "NGN"; // Change to "EGP" when Xairod Paystack is ready
 
-// ── LISTING CATEGORIES ────────────────────────────────────────────────────────
+// ── PRODUCTION LOGGER (silent in prod) ──
+const isDev=process.env.NODE_ENV==="development";
+const devLog=isDev?console.log:()=>{};
+const devWarn=isDev?console.warn:()=>{};
+
+// ── ORIGINAL APP CONSTANTS (restored from v13) ──
+const PLANS=[
+  {id:"basic",label:"Basic",icon:"🌱",price:0,period:"Free forever",color:"#7C6E52",
+   feats:["Browse all listings","Save favourite places","Community Q&A","Survival guides"]},
+  {id:"premium",label:"Premium",icon:"⭐",price:3,period:"per month",color:"#C8861A",
+   feats:["Everything in Basic","Ad-free experience","Priority Q&A answers","Exclusive city guides","Direct message businesses"]},
+  {id:"business",label:"Business",icon:"🏢",price:25,period:"per month",color:"#0A6B3E",
+   feats:["TOP listing badge","Appear first in category","Analytics dashboard","Verified badge","Featured on homepage","Direct contact button"]},
+  {id:"agency",label:"Agency Pro",icon:"🚀",price:60,period:"per month",color:"#2471A3",
+   feats:["Everything in Business","Priority TOP badge","Student leads direct","Banner ad placement","Monthly report","Dedicated account manager"]},
+];
+
+const TIPS=[
+  {icon:"🏢",type:"gold",title:"Use a Trusted Agency",text:"Agencies like Universal Prime help with fully, partially or self-funded admissions. Always verify they are licensed and get written contracts."},
+  {icon:"📄",type:"info",title:"Documents to Prepare",text:"Passport (6-month validity), admission letter, yellow fever card, bank statement, accommodation proof, 4 passport photos."},
+  {icon:"🏠",type:"gold",title:"Secure Housing First",text:"Book housing before you arrive. Nasr City and Maadi are top areas. Ask in Xairod community for trusted landlords."},
+  {icon:"✈️",type:"info",title:"Flight Tips",text:"Book 3+ weeks ahead. Join the Africa–Cairo Flights Hub on Xairod for deals. Budget $250–$400 return."},
+  {icon:"⚠️",type:"warn",title:"Taxi & Agency Scams",text:"Use Uber or Careem only. For agencies, never pay 100% upfront — use instalments and always get receipts."},
+  {icon:"💸",type:"info",title:"Money Transfer",text:"Use Wise or Western Union. Avoid airport exchange desks — terrible rates. City centre bureaux are much better."},
+];
+
+const T={
+  en:{
+    home:"Home",explore:"Explore",tips:"Tips",community:"Community",
+    plans:"Plans",profile:"Profile",groups:"Groups",
+    search:"Search agencies, schools, food…",
+    notifications:"Notifications",dismiss:"Dismiss",
+    language:"ع",seeAll:"See all",categories:"Categories",
+    agencySpot:"Agency Spotlight",featured:"Featured",
+    joinTelegram:"Join our Telegram",joinCommunity:"Join the Xairod Family 🌍",
+    communityDesc:"Ask about agencies, schools, housing and more.",
+    shareTitle:"Xairod — Your Home Away From Home",
+    shareText:"Find African food, trusted agencies and housing in Cairo.",
+    shareBtn:"Share Xairod 🌍",
+    findAgency:"Find Agency",findAgencyDesc:"Verified agencies matched to your university",
+    universities:"Universities",allUniversities:"All Universities",
+    groupsTitle:"Community Groups",joinGroup:"Join",leaveGroup:"Leave",
+    myGroups:"My Groups",exploreGroups:"Explore Groups",
+    notifEmpty:"No notifications yet",
+  },
+  ar:{
+    home:"الرئيسية",explore:"استكشف",tips:"نصائح",community:"المجتمع",
+    plans:"الخطط",profile:"الملف",groups:"المجموعات",
+    search:"ابحث عن وكالات ومدارس وطعام…",
+    notifications:"الإشعارات",dismiss:"إغلاق",
+    language:"EN",seeAll:"عرض الكل",categories:"الفئات",
+    agencySpot:"وكالة مميزة",featured:"مميز",
+    joinTelegram:"انضم إلى تيليغرام",joinCommunity:"انضم إلى عائلة Xairod 🌍",
+    communityDesc:"اسأل عن الوكالات والمدارس والسكن والمزيد.",
+    shareTitle:"Xairod — بيتك بعيداً عن البيت",
+    shareText:"ابحث عن طعام أفريقي ووكالات موثوقة وسكن في القاهرة.",
+    shareBtn:"شارك Xairod 🌍",
+    findAgency:"ابحث عن وكالة",findAgencyDesc:"وكالات موثوقة مطابقة لجامعتك",
+    universities:"الجامعات",allUniversities:"كل الجامعات",
+    groupsTitle:"مجموعات المجتمع",joinGroup:"انضم",leaveGroup:"اخرج",
+    myGroups:"مجموعاتي",exploreGroups:"استكشف المجموعات",
+    notifEmpty:"لا إشعارات بعد",
+  }
+};
+
 const CATS=[
-  {id:"housing",      label:"Housing",         icon:"🏠", c:"#C8861A"},
-  {id:"health",       label:"Health",           icon:"🏥", c:"#C0392B"},
-  {id:"food",         label:"African Food",     icon:"🍲", c:"#0A6B3E"},
-  {id:"schools",      label:"Schools",          icon:"🎓", c:"#2471A3"},
-  {id:"community",    label:"Community",        icon:"🌍", c:"#8E44AD"},
-  {id:"medical_tourism",label:"Medical Tourism",icon:"✈️", c:"#C8861A"},
-  {id:"other",        label:"Other",            icon:"🏢", c:"#555"},
+  {id:"all",l:"All",i:"✦",c:"#0A6B3E"},
+  {id:"food",l:"Food",i:"🍲",c:"#0A6B3E"},
+  {id:"agency",l:"Agencies",i:"🏢",c:"#2471A3"},
+  {id:"school",l:"Schools",i:"🎓",c:"#8E44AD"},
+  {id:"housing",l:"Housing",i:"🏠",c:"#E67E22"},
+  {id:"travel",l:"Travel",i:"✈️",c:"#C0392B"},
+  {id:"market",l:"Markets",i:"🛒",c:"#C8861A"},
+  {id:"beauty",l:"Beauty",i:"💇",c:"#16A085"},
+  {id:"health",l:"Health",i:"🏥",c:"#2C3E50"},
+  {id:"finance",l:"Finance",i:"💸",c:"#D35400"},
+  {id:"jobs",l:"Jobs",i:"💼",c:"#1A5276"},
+  {id:"transport",l:"Transport",i:"🚇",c:"#717D7E"},
 ];
 
-// ── COMMUNITY GROUPS (default) ────────────────────────────────────────────────
-const GROUPS=[
-  {id:"ng", name:"🇳🇬 Nigerians in Cairo",   members:0, category:"community"},
-  {id:"gh", name:"🇬🇭 Ghanaians in Cairo",   members:0, category:"community"},
-  {id:"et", name:"🇪🇹 Ethiopians in Cairo",  members:0, category:"community"},
-  {id:"ke", name:"🇰🇪 Kenyans in Cairo",     members:0, category:"community"},
-  {id:"sn", name:"🇸🇳 Senegalese in Cairo",  members:0, category:"community"},
-  {id:"gen",name:"🌍 All Africans in Cairo", members:0, category:"community"},
+const DATA=[
+  {id:"1",name:"Mama Chioma's Kitchen",cat:"food",city:"Nasr City",desc:"Jollof, egusi, pounded yam. Tastes exactly like home.",rating:4.9,rc:84,top:true,african:true,icon:"🍲",phone:"+20 100 123 4567",hours:"11am–10pm",price:"$$",verified:true,lat:30.0626,lng:31.3219,images:[]},
+  {id:"2",name:"Abyssinia Ethiopian Café",cat:"food",city:"Zamalek",desc:"Injera, tibs, kitfo. Coffee ceremony Fridays.",rating:4.8,rc:61,top:false,african:true,icon:"☕",phone:"+20 102 345 6789",hours:"9am–10pm",price:"$$",verified:true,lat:30.0626,lng:31.2197,images:[]},
+  {id:"3",name:"Universal Prime",cat:"agency",city:"Cairo / Global",desc:"Trusted admission agency. Fully funded, partial & self-funded scholarships to Egypt, Turkey & worldwide.",rating:4.9,rc:143,top:true,african:true,icon:"🏢",phone:"+90 212 000 0001",hours:"Mon–Fri 9am–6pm",price:"Free consult",verified:true,lat:30.0903,lng:31.3414,images:[]},
+  {id:"4",name:"EduBridge Africa",cat:"agency",city:"Cairo",desc:"University placement in Egypt and UAE. Visa assistance and airport pickup included.",rating:4.7,rc:58,top:false,african:true,icon:"🎯",phone:"+20 100 999 8888",hours:"Mon–Sat 9am–5pm",price:"Commission",verified:true,lat:30.0444,lng:31.2357,images:[]},
+  {id:"5",name:"Al-Azhar University",cat:"school",city:"Cairo",desc:"World-renowned university. Scholarships available for African students. Apply early.",rating:4.8,rc:320,top:true,african:false,icon:"🕌",phone:"+20 2 261 24444",hours:"Mon–Thu 8am–3pm",price:"Scholarship/Fees",verified:true,lat:30.0459,lng:31.2627,images:[]},
+  {id:"6",name:"Cairo University",cat:"school",city:"Giza",desc:"Egypt's largest university. Medicine, Engineering, Commerce. African students welcome.",rating:4.6,rc:180,top:false,african:false,icon:"🏛️",phone:"+20 2 356 79750",hours:"Mon–Thu 8am–3pm",price:"Fees vary",verified:true,lat:30.0269,lng:31.2089,images:[]},
+  {id:"7",name:"Nasr City Student Rooms",cat:"housing",city:"Nasr City",desc:"Affordable furnished rooms for African students. Bills included. Mixed nationality building.",rating:4.5,rc:42,top:false,african:true,icon:"🛏️",phone:"+20 111 444 3333",hours:"Always open",price:"$$",verified:true,lat:30.0594,lng:31.3287,images:[]},
+  {id:"8",name:"Maadi Expat Apartments",cat:"housing",city:"Maadi",desc:"Modern furnished flats. English-speaking landlord. Monthly or yearly.",rating:4.7,rc:29,top:true,african:false,icon:"🏠",phone:"+20 100 555 2222",hours:"Always open",price:"$$$",verified:true,lat:29.9602,lng:31.2569,images:[]},
+  {id:"9",name:"Africa–Cairo Flights Hub",cat:"travel",city:"Cairo Airport",desc:"Best flight deals Lagos→Cairo, Accra→Cairo, Addis→Cairo. Telegram group for deals.",rating:4.8,rc:211,top:true,african:true,icon:"✈️",phone:"Telegram",hours:"24hrs",price:"$",verified:true,lat:30.1219,lng:31.4056,images:[]},
+  {id:"10",name:"Egypt Visa Express",cat:"travel",city:"Cairo",desc:"Fast visa processing for African students. 48hr turnaround. Student & tourist visas.",rating:4.6,rc:88,top:false,african:false,icon:"📋",phone:"+20 100 111 0000",hours:"Mon–Sat 9am–5pm",price:"$$",verified:false,lat:30.0577,lng:31.2392,images:[]},
+  {id:"11",name:"Ataba African Market",cat:"market",city:"Downtown",desc:"Spices, dried fish, palm oil, crayfish. Go in the morning for best stock.",rating:4.6,rc:97,top:true,african:false,icon:"🛒",phone:"N/A",hours:"8am–7pm",price:"$",verified:true,lat:30.0511,lng:31.2461,images:[]},
+  {id:"12",name:"Tope's African Hair",cat:"beauty",city:"Heliopolis",desc:"Braids, weaves, loc maintenance. African-owned. Book ahead!",rating:4.8,rc:67,top:true,african:true,icon:"💇",phone:"+20 111 456 7890",hours:"10am–7pm",price:"$$",verified:true,lat:30.0808,lng:31.3231,images:[]},
+  {id:"13",name:"Dar Al Fouad Hospital",cat:"health",city:"6th October",desc:"English-speaking doctors. Most trusted hospital among Africans in Cairo.",rating:4.7,rc:88,top:true,african:false,icon:"🏥",phone:"+20 38 540 0000",hours:"24hrs",price:"$$$",verified:true,lat:29.9762,lng:30.9398,images:[]},
+  {id:"14",name:"Wise / Western Union",cat:"finance",city:"All Egypt",desc:"Best money transfer rates. Wise is cheapest, WU is fastest. Avoid airport kiosks.",rating:4.9,rc:445,top:false,african:false,icon:"💸",phone:"App/Online",hours:"24hrs",price:"Low fees",verified:true,lat:30.0444,lng:31.2357,images:[]},
+  {id:"15",name:"Cairo African Jobs Board",cat:"jobs",city:"Cairo",desc:"Part-time & full-time jobs for Africans. English teaching, translation, IT roles.",rating:4.5,rc:33,top:false,african:true,icon:"💼",phone:"Telegram",hours:"Always",price:"Free",verified:false,lat:30.0444,lng:31.2357,images:[]},
+  {id:"16",name:"Careem / Uber Egypt",cat:"transport",city:"All Egypt",desc:"Always use apps. Never negotiate with random taxis — you will be overcharged.",rating:4.8,rc:300,top:true,african:false,icon:"🚗",phone:"App",hours:"24hrs",price:"$$",verified:true,lat:30.0444,lng:31.2357,images:[]},
 ];
 
-// ── STUDENT ARRIVAL TIPS ──────────────────────────────────────────────────────
-const ARRIVE=[
-  {tip:"Get a local SIM card (Vodafone or Orange) at Cairo Airport before leaving arrivals."},
-  {tip:"Download Uber or Careem before you land — do not take unmarked taxis from the airport."},
-  {tip:"Exchange only a small amount of currency at the airport. Better rates available in the city."},
-  {tip:"Al-Azhar University registration opens specific weeks — confirm your exact dates before flying."},
-  {tip:"Nasr City and Abbassia are the most popular areas for African students near Al-Azhar."},
-  {tip:"Learn basic Arabic numbers before you arrive — prices and addresses will be easier to understand."},
-  {tip:"Bring printed copies of all your documents — university acceptance, passport, visa, photos."},
-  {tip:"Join the Xairod community to connect with other Africans already in Cairo before you arrive."},
-];
-
-// ── WHAT TO AVOID IN CAIRO ────────────────────────────────────────────────────
 const AVOID=[
-  {tip:"Avoid paying housing deposits to agents you only know from WhatsApp — always pay through Xairod escrow."},
-  {tip:"Do not accept rides from unofficial drivers outside the airport or train stations."},
-  {tip:"Avoid flashing expensive phones or jewellery in crowded markets."},
-  {tip:"Do not drink tap water — bottled water is widely available and very cheap."},
-  {tip:"Avoid signing any rental agreement without reading it carefully or having it translated."},
-  {tip:"Do not exchange money at hotels — rates are very poor. Use exchange offices or ATMs."},
-  {tip:"Avoid sharing your passport number or national ID details with strangers."},
-  {tip:"Do not rely on a single WhatsApp contact for housing, health or school referrals — verify through Xairod."},
+  {icon:"🏢",type:"warn",title:"Fake Agencies",text:"Always verify agency registration. Never pay 100% fees upfront. Get signed contracts and check Xairod reviews first."},
+  {icon:"🚕",type:"warn",title:"Unlicensed Taxis",text:"Always use Uber or Careem. Never negotiate with random taxis — massively overcharged as a foreigner."},
+  {icon:"🏪",type:"warn",title:"Tourist Trap Shops",text:"Near Pyramids and Khan El-Khalili prices are 5x for foreigners. Shop in local neighbourhoods."},
+  {icon:"🌙",type:"warn",title:"Ataba at Night",text:"Avoid Ataba market area after 9pm alone. Go in groups or daylight only."},
 ];
 
-// ── UNIVERSITIES (initial list — supplemented from Supabase) ─────────────────
-const UNIVERSITIES=[
-  {id:"al-azhar",    name:"Al-Azhar University",           city:"Cairo",   type:"Islamic/General"},
-  {id:"cairo-uni",   name:"Cairo University",              city:"Cairo",   type:"Public"},
-  {id:"ain-shams",   name:"Ain Shams University",          city:"Cairo",   type:"Public"},
-  {id:"agu",         name:"The American University Cairo", city:"Cairo",   type:"Private"},
-  {id:"arab-acad",   name:"Arab Academy for Science",      city:"Cairo",   type:"Private"},
-  {id:"future-uni",  name:"Future University in Egypt",    city:"Cairo",   type:"Private"},
-  {id:"nile-uni",    name:"Nile University",               city:"Cairo",   type:"Private"},
-  {id:"bue",         name:"British University in Egypt",   city:"Cairo",   type:"Private"},
+const ARRIVE=[
+  {icon:"🏢",type:"gold",title:"Step 1: Choose Your Agency",text:"Find agencies like Universal Prime on Xairod. Compare funding options. Get written offers before paying anything."},
+  {icon:"📄",type:"gold",title:"Step 2: Documents",text:"Passport, admission letter, yellow fever card, bank statement, accommodation proof, 4 passport photos (white background)."},
+  {icon:"🏠",type:"info",title:"Step 3: Book Housing",text:"Use Xairod's Housing category to find verified rooms in Nasr City or Maadi before you arrive."},
+  {icon:"✈️",type:"info",title:"Step 4: Book Flight",text:"Cairo airport (CAI). Check Africa–Cairo Flights Hub for best deals. Book 3+ weeks ahead."},
 ];
 
-// ── COMMUNITY Q&A (seed data — supplemented from Supabase) ───────────────────
 const QA=[
-  {id:"q1", q:"What is the best area to live near Al-Azhar?", a:"Nasr City and Abbassia are closest. Most African students prefer Nasr City for the community feel and affordable rents.", votes:12},
-  {id:"q2", q:"Is it safe for Africans to live in Cairo?", a:"Yes, Cairo is generally safe. Nasr City, Maadi and Heliopolis have large African communities. Use Xairod for verified housing.", votes:9},
-  {id:"q3", q:"Where can I find Nigerian food in Cairo?", a:"Several Nigerian restaurants operate in Nasr City and downtown Cairo. Search 'Nigerian food' in Xairod to find rated options.", votes:7},
+  {id:"1",a:"Chukwuemeka O.",q:"Is Universal Prime a legit agency for Egypt admissions?",r:8,area:"Agencies",t:"1h ago",done:true},
+  {id:"2",a:"Abena K.",q:"What's the difference between fully funded and partial scholarship?",r:6,area:"Schools",t:"3h ago",done:true},
+  {id:"3",a:"Musa A.",q:"Best area to rent near Al-Azhar University?",r:12,area:"Housing",t:"1d ago",done:true},
+  {id:"4",a:"Amira S.",q:"Does Universal Prime help with Turkey admissions too?",r:5,area:"Agencies",t:"2d ago",done:false},
 ];
+
+const UNIVERSITIES=[
+  {id:"azhar",name:"Al-Azhar University",name_ar:"جامعة الأزهر",emoji:"🕌",city:"Cairo",country:"Egypt"},
+  {id:"cairo",name:"Cairo University",name_ar:"جامعة القاهرة",emoji:"🏛️",city:"Giza",country:"Egypt"},
+  {id:"ain_shams",name:"Ain Shams University",name_ar:"جامعة عين شمس",emoji:"☀️",city:"Cairo",country:"Egypt"},
+  {id:"msa",name:"MSA University",name_ar:"جامعة MSA",emoji:"🎓",city:"6th October",country:"Egypt"},
+  {id:"istanbul",name:"Istanbul University",name_ar:"جامعة إسطنبول",emoji:"🇹🇷",city:"Istanbul",country:"Turkey"},
+  {id:"malaysia",name:"IIUM Malaysia",name_ar:"الجامعة الإسلامية ماليزيا",emoji:"🇲🇾",city:"Kuala Lumpur",country:"Malaysia"},
+];
+
+const GROUPS=[
+  {id:"ng",name:"Nigerians in Cairo",name_ar:"النيجيريون في القاهرة",emoji:"🇳🇬",members:247,category:"nationality",joined:false},
+  {id:"gh",name:"Ghanaians in Egypt",name_ar:"الغانيون في مصر",emoji:"🇬🇭",members:89,category:"nationality",joined:false},
+  {id:"et",name:"Ethiopians in Cairo",name_ar:"الإثيوبيون في القاهرة",emoji:"🇪🇹",members:134,category:"nationality",joined:false},
+  {id:"nasr",name:"Nasr City Residents",name_ar:"سكان مدينة نصر",emoji:"🏙️",members:412,category:"city",joined:false},
+  {id:"azhar_s",name:"Al-Azhar Students",name_ar:"طلاب الأزهر",emoji:"🎓",members:876,category:"interest",joined:false},
+  {id:"food",name:"African Foodies Cairo",name_ar:"محبو الطعام الأفريقي",emoji:"🍲",members:203,category:"interest",joined:false},
+  {id:"jobs",name:"Cairo Job Seekers",name_ar:"الباحثون عن عمل",emoji:"💼",members:156,category:"interest",joined:false},
+  {id:"ke",name:"Kenyan Community Egypt",name_ar:"مجتمع الكينيين",emoji:"🇰🇪",members:62,category:"nationality",joined:false},
+];
+
 
 // ── PAYSTACK PAYMENT HOOK ─────────────────────────────────────────────────────
 function usePaystack(){
@@ -1034,13 +1111,6 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
   const[confLoading,setConfLoading]=useState({});
   const[confMsg,setConfMsg]=useState({});
 
-  // Show subtle loading indicator inside the screen
-  if(reqLoading) return(
-    <div style={{padding:"60px 20px",textAlign:"center"}}>
-      <div style={{fontSize:32,marginBottom:12}}>⏳</div>
-      <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:800,color:"var(--sub)"}}>Loading your requests…</div>
-    </div>
-  );
 
   const filtered=filter==="all"?requests:requests.filter(r=>r.status===filter);
 
@@ -1067,6 +1137,14 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
   const[paying,setPaying]=useState(false);
   const[payError,setPayError]=useState("");
   const paystackReady=usePaystack();
+
+  // Show subtle loading indicator inside the screen
+  if(reqLoading) return(
+    <div style={{padding:"60px 20px",textAlign:"center"}}>
+      <div style={{fontSize:32,marginBottom:12}}>⏳</div>
+      <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:800,color:"var(--sub)"}}>Loading your requests…</div>
+    </div>
+  );
 
   const acceptQuote=async(req,quote)=>{
     if(!user) return;
@@ -2802,11 +2880,6 @@ function ConnectModal({listing, user, lang, onClose}){
             }
           });
       }
-
-      // Reload user's requests in background
-      supabase.from("service_requests").select("*,quotes(*)")
-        .eq("user_id",user.id).order("created_at",{ascending:false})
-        .then(({data})=>{if(data)setMyRequests(data);});
 
       // Notify user — confirm their request was received
       (async()=>{try{await supabase.from("notifications").insert({
@@ -5030,6 +5103,18 @@ function MainApp({user,onLogout}){
   const[userPrefs,setUserPrefs]=useState({interests:[],area:"",budget:null});
   const[recentlyViewed,setRecentlyViewed]=useState([]);
   const[discoveryReady,setDiscoveryReady]=useState(false);
+
+  // Remember listings the user opens ("Continue Exploring")
+  useEffect(()=>{
+    if(!detail?.id||!user?.id) return;
+    setRecentlyViewed(prev=>{
+      const next=[detail.id,...prev.filter(id=>id!==detail.id)].slice(0,10);
+      supabase.from("profiles").update({recently_viewed:next}).eq("id",user.id)
+        .then(({error})=>{if(error) devWarn("recently_viewed save:",error.message);});
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[detail?.id]);
   const[srch,setSrch]=useState("");
   const[cat,setCat]=useState("all");
   const[srt,setSrt]=useState("rating");
@@ -5770,7 +5855,7 @@ function MainApp({user,onLogout}){
         {modal==="arrive"&&<SheetModal tips={ARRIVE} title="🎓 Student Guide" onClose={()=>setModal(null)}/>}
         {detail&&<DetailModal item={detail} onClose={()=>setDetail(null)} saved={saved.has(detail.id)} onSave={toggleSave} lang={lang} onConnect={l=>setConnectListing(l)}/>}
         {connectListing&&<ConnectModal listing={connectListing} user={user} lang={lang} onClose={()=>setConnectListing(null)}/>}
-        {editProfileOpen&&<EditProfileModal user={userProfile||user} onClose={()=>setEditProfileOpen(false)} onSave={u=>{setUserProfile(u);setUser(u);setEditProfileOpen(false);}}/>}
+        {editProfileOpen&&<EditProfileModal user={userProfile||user} onClose={()=>setEditProfileOpen(false)} onSave={u=>{setUserProfile(u);setEditProfileOpen(false);}}/>}
       </div>{/* end main-scroll */}
       </div>{/* end app-content */}
 
