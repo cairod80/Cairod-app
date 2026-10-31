@@ -67,6 +67,10 @@ const PAYSTACK_CURRENCY   = "NGN"; // Change to "EGP" when Xairod Paystack is re
 const isDev=process.env.NODE_ENV==="development";
 const devLog=isDev?console.log:()=>{};
 const devWarn=isDev?console.warn:()=>{};
+// Only allow http(s) links from user-supplied URLs (blocks javascript:/data: injection)
+const safeHref=(u)=>{try{const x=new URL(String(u||""),window.location.origin);return(x.protocol==="https:"||x.protocol==="http:")?x.href:"#";}catch(e){return "#";}};
+const XAIROD_BUILD="v14.4 · 30 Oct 2026";
+try{console.info("Xairod build",XAIROD_BUILD);}catch(e){}
 
 // ── ORIGINAL APP CONSTANTS (restored from v13) ──
 const PLANS=[
@@ -749,13 +753,13 @@ function MsgFileRender({meta}){
   if(!meta?.url) return null;
   if(meta.isImage) return(
     <div style={{marginBottom:4}}>
-      <img src={meta.url} alt={meta.name||"image"} onClick={()=>window.open(meta.url,"_blank")}
+      <img src={safeHref(meta.url)} alt={meta.name||"image"} onClick={()=>window.open(safeHref(meta.url),"_blank","noopener")}
         style={{maxWidth:"100%",maxHeight:280,borderRadius:8,display:"block",cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)"}}/>
       <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",marginTop:3}}>{meta.name} · {meta.size?fmtSize(meta.size):""}</div>
     </div>
   );
   return(
-    <a href={meta.url} target="_blank" rel="noreferrer"
+    <a href={safeHref(meta.url)} target="_blank" rel="noreferrer"
       style={{display:"flex",gap:10,alignItems:"center",padding:"8px 11px",background:"rgba(255,255,255,0.06)",borderRadius:9,textDecoration:"none",marginBottom:4,border:"1px solid rgba(255,255,255,0.08)"}}>
       <span style={{fontSize:24}}>{meta.mimeType?.includes("pdf")?"📋":meta.mimeType?.includes("word")?"📝":"📄"}</span>
       <div style={{flex:1,minWidth:0}}>
@@ -5644,6 +5648,7 @@ function MainApp({user,onLogout}){
               </div>
               <button onClick={onLogout} style={{width:"100%",marginTop:14,background:"rgba(192,57,43,0.1)",border:"1px solid rgba(192,57,43,0.2)",color:"var(--warn)",borderRadius:11,padding:"11px",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,cursor:"pointer"}}>Sign Out</button>
 
+              <div style={{textAlign:"center",fontSize:10,color:"var(--sub)",opacity:0.6,margin:"6px 0 2px"}}>Xairod {XAIROD_BUILD}</div>
               {/* Account management */}
               <div style={{marginTop:8,marginBottom:18}}>
                 <button onClick={()=>{
