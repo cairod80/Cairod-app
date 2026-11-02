@@ -69,8 +69,8 @@ const devLog=isDev?console.log:()=>{};
 const devWarn=isDev?console.warn:()=>{};
 // Only allow http(s) links from user-supplied URLs (blocks javascript:/data: injection)
 const safeHref=(u)=>{try{const x=new URL(String(u||""),window.location.origin);return(x.protocol==="https:"||x.protocol==="http:")?x.href:"#";}catch(e){return "#";}};
-const XAIROD_BUILD="v14.4 · 30 Oct 2026";
-try{console.info("Xairod build",XAIROD_BUILD);}catch(e){}
+const XAIROD_BUILD="v14.5 · 2 Nov 2026";
+try{console.info("Xairod build",XAIROD_BUILD);}catch(_e){devWarn("non-fatal:",_e&&_e.message);}
 
 // ── ORIGINAL APP CONSTANTS (restored from v13) ──
 const PLANS=[
@@ -267,7 +267,8 @@ function OpportunityRadar({user,listings,saved,userPrefs,onOpenListing}){
     const interests=userPrefs?.interests||[];
     const newMatches=listings.filter(l=>{
       const isNew=l.created_at&&new Date(l.created_at).getTime()>cutoff;
-      const matches=interests.length===0||interests.includes(l.cat||l.category);
+      const wanted=catsForInterests(interests);
+      const matches=wanted.length===0||wanted.includes(l.cat||l.category);
       return isNew&&matches;
     }).slice(0,3);
     newMatches.forEach(l=>radarItems.push({
@@ -292,7 +293,7 @@ function OpportunityRadar({user,listings,saved,userPrefs,onOpenListing}){
         sub:b.service_requests?.listing_name||"Service booking",
         ts:b.created_at
       }));
-    }catch{}
+    }catch(_e){devWarn("non-fatal:",_e&&_e.message);}
 
     // 3. Saved listing changes (rating updates)
     if(saved.size>0){
@@ -329,7 +330,7 @@ function OpportunityRadar({user,listings,saved,userPrefs,onOpenListing}){
       {/* Bell button */}
       <button onClick={()=>{setOpen(true);setUnread(0);trackEvent("notification_opened",{count:items.length},user?.id);}}
         style={{position:"relative",background:"none",border:"none",cursor:"pointer",padding:4}}>
-        <span style={{fontSize:22}}>🔔</span>
+        <span style={{fontSize:20}} aria-label="Opportunities">✨</span>
         {unread>0&&(
           <span style={{position:"absolute",top:0,right:0,width:16,height:16,borderRadius:"50%",background:"#E74C3C",color:"white",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>
             {unread>9?"9+":unread}
@@ -540,7 +541,7 @@ function playNotifSound(){
     gain.gain.setValueAtTime(0.12,ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.4);
     osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.4);
-  }catch(e){}
+  }catch(_e){devWarn("non-fatal:",_e&&_e.message);}
 }
 const NotifCtx=createContext(null);
 function NotifProvider({userId,children}){
@@ -1221,7 +1222,7 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
             (req.listing_name||req.ref||"your service")+"\". Open Messages to chat.",
           type:"quote_accepted",
           metadata:{request_ref:req.ref,room_id:req.id}
-        });}catch{}})();
+        });}catch(_e){devWarn("non-fatal:",_e&&_e.message);}})();
       }
 
       onRefresh();
@@ -1387,7 +1388,7 @@ function MyRequestsScreen({user,lang,requests,onRefresh,loading:reqLoading,onGoT
             business_id:quote.business_id,
             user_id:user.id,
           }
-        });}catch{}})();
+        });}catch(_e){devWarn("non-fatal:",_e&&_e.message);}})();
 
         setPaying(false);setPaymentModal(null);
         onRefresh();
@@ -1849,7 +1850,7 @@ function HealthScreen({user,lang,listings,setConnectListing,pendingCaseRef,onCle
     {id:"h5",name:"Saudi German Hospital",   city:"Cairo",       specialities:["cardiac","neuro","ortho","eye"],        accredited:true, rating:4.7, rc:278, img:"🏥",price:"$$$", en:true},
   ];
 
-  const healthListings=(listings.filter?listings.filter(l=>l.cat==="health"):DATA.filter(d=>d.cat==="health"));
+  const healthListings=(Array.isArray(listings)?listings:[]).filter(l=>l.cat==="health");
   const careListings=healthListings.filter(l=>(careFilter==="all"||l.subcat===careFilter)&&(careSearch===""||l.name.toLowerCase().includes(careSearch.toLowerCase())));
   const matchedHospitals=procedure?HOSPITALS.filter(h=>h.specialities.includes(procedure)||h.specialities.includes("general")):HOSPITALS;
 
@@ -2863,7 +2864,7 @@ function ConnectModal({listing, user, lang, onClose}){
         when_needed:when.trim()||null,
         budget:budget.trim()||null,
         status:"new",
-      });}catch{}})();
+      });}catch(_e){devWarn("non-fatal:",_e&&_e.message);}})();
 
       // Notify business — fire and forget
       if(assignedBizId){
@@ -2880,7 +2881,7 @@ function ConnectModal({listing, user, lang, onClose}){
                   type:"new_request",
                   metadata:{request_ref:ref,listing_name:listing?.name}
                 });
-              }catch{}
+              }catch(_e){devWarn("non-fatal:",_e&&_e.message);}
             }
           });
       }
@@ -2892,7 +2893,7 @@ function ConnectModal({listing, user, lang, onClose}){
         message:`Your request to ${listing?.name} was sent successfully. Reference: ${ref}. You'll be notified when they respond.`,
         type:"request_sent",
         metadata:{request_ref:ref,listing_name:listing?.name}
-      });}catch{}})();
+      });}catch(_e){devWarn("non-fatal:",_e&&_e.message);}})();
 
       setReqRef(ref);
       setStep("sent");
@@ -3565,7 +3566,7 @@ function DetailModal({item,onClose,saved,onSave,lang,onConnect}){
     }
     setRvErr("");
     trackEvent("review_submitted",{listingId:item.id,rating:rs});
-    try{localStorage.setItem("xairod_first_review_done","1");}catch(e){}
+    try{localStorage.setItem("xairod_first_review_done","1");}catch(_e){devWarn("non-fatal:",_e&&_e.message);}
     setDone(true);
   };
 
@@ -3960,8 +3961,21 @@ function Login({onSignup,onSuccess}){
   const[show,setShow]=useState(false);
   const[loading,setLoading]=useState(false);
   const[err,setErr]=useState("");
+  const[info,setInfo]=useState("");
+  const forgot=async()=>{
+    setErr("");setInfo("");
+    const e=email.trim().toLowerCase();
+    if(!e||!e.includes("@")){setErr("Enter your email above, then tap Forgot password.");return;}
+    setLoading(true);
+    try{
+      const{error}=await supabase.auth.resetPasswordForEmail(e,{redirectTo:window.location.origin});
+      if(error){devWarn("reset email:",error.message);setErr("Could not send the reset email. Please try again in a minute.");}
+      else setInfo("If that email has an account, a reset link is on its way. Check your inbox and spam.");
+    }catch(ex){setErr("Could not send the reset email. Check your connection.");}
+    setLoading(false);
+  };
   const submit=async()=>{
-    setErr("");
+    setErr("");setInfo("");
     if(!email||!pwd){setErr("Please fill in all fields.");return;}
     if(!email.includes("@")){setErr("Enter a valid email.");return;}
     setLoading(true);
@@ -3995,8 +4009,9 @@ function Login({onSignup,onSuccess}){
           </div>
         </div>
         <div style={{textAlign:"right",marginBottom:16,marginTop:-6}}>
-          <span style={{fontSize:12,color:"#4DD994",fontWeight:600,cursor:"pointer"}}>Forgot password?</span>
+          <span role="button" tabIndex={0} onClick={forgot} onKeyDown={e=>{if(e.key==="Enter")forgot();}} style={{fontSize:12,color:"#4DD994",fontWeight:600,cursor:"pointer",padding:"6px 0",display:"inline-block"}}>Forgot password?</span>
         </div>
+        {info&&<div role="status" style={{fontSize:12,color:"#4DD994",background:"rgba(77,217,148,0.08)",border:"1px solid rgba(77,217,148,0.2)",borderRadius:10,padding:"9px 12px",marginBottom:12}}>{info}</div>}
         <button className="auth-btn" onClick={submit} disabled={loading}>
           {loading&&<span className="spin"/>}{loading?"Signing in…":"Sign In →"}
         </button>
@@ -4434,7 +4449,7 @@ function CookieBanner(){
   },[]);
 
   const setConsent=(value)=>{
-    try{localStorage.setItem("xairod_cookie_consent",value);}catch(e){}
+    try{localStorage.setItem("xairod_cookie_consent",value);}catch(_e){devWarn("non-fatal:",_e&&_e.message);}
     trackEvent("cookie_consent_set",{value});
     setVisible(false);
   };
@@ -4749,6 +4764,10 @@ function OnboardingPreferences({user,onDone}){
  * Returns sorted array with .score attached.
  * Never fabricates data — missing fields use documented defaults.
  */
+// Onboarding interests are friendly names; listings use the category ids in CATS.
+const INTEREST_CATS={housing:["housing"],health:["health"],food:["food"],schools:["school"],community:[],medical_tourism:["health","travel"]};
+const catsForInterests=(ints)=>[...new Set((ints||[]).flatMap(i=>INTEREST_CATS[i]||[i]))];
+
 function scoreListings(listings, prefs={}, savedIds=new Set(), viewedIds=[]){
   if(!listings||listings.length===0) return [];
 
@@ -4769,14 +4788,12 @@ function scoreListings(listings, prefs={}, savedIds=new Set(), viewedIds=[]){
     .map(l => {
       // ── 1. Category match (0–100) ──────────────────────────────────────
       let catScore = 0;
-      if(interests.length === 0){
-        catScore = 50; // no prefs → neutral, show everything equally
+      const wantedCats = catsForInterests(interests);
+      if(wantedCats.length === 0){
+        catScore = 50; // no usable preference → neutral
       } else {
         const catId = l.cat || l.category || "";
-        catScore = interests.includes(catId) ? 100 : 0;
-        // Partial match: "health" interest matches "medical_tourism" cat
-        if(catScore===0 && interests.includes("health") && catId==="travel") catScore=40;
-        if(catScore===0 && interests.includes("medical_tourism") && catId==="health") catScore=40;
+        catScore = wantedCats.includes(catId) ? 100 : 0;
       }
 
       // ── 2. Quality (0–100) ────────────────────────────────────────────
@@ -4881,6 +4898,42 @@ function getContinueExploring(listings, viewedIds){
 }
 
 
+// ── LISTING STATES ───────────────────────────────────────────────────────────
+function ListingsSkeleton(){
+  return(
+    <div className="section" aria-busy="true" aria-label="Loading businesses">
+      <div className="listing-grid">
+        {[0,1,2,3].map(i=>(
+          <div key={i} style={{height:150,borderRadius:14,background:"linear-gradient(90deg,rgba(255,255,255,0.04),rgba(255,255,255,0.09),rgba(255,255,255,0.04))",border:"1px solid var(--bdr)"}}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+function ListingsError({onRetry}){
+  return(
+    <div className="section">
+      <div role="alert" style={{border:"1px solid rgba(192,57,43,0.3)",background:"rgba(192,57,43,0.08)",borderRadius:14,padding:"16px 14px",textAlign:"center"}}>
+        <div style={{fontWeight:800,fontSize:14,marginBottom:4}}>Couldn't load businesses</div>
+        <div style={{fontSize:12,color:"var(--sub)",marginBottom:12}}>Check your connection and try again.</div>
+        <button onClick={onRetry} style={{padding:"10px 22px",borderRadius:10,border:"none",background:"var(--g)",color:"#03311A",fontWeight:800,fontSize:13,cursor:"pointer"}}>Try again</button>
+      </div>
+    </div>
+  );
+}
+function ListingsEmpty(){
+  return(
+    <div className="section">
+      <div style={{border:"1px dashed var(--bdr)",borderRadius:14,padding:"22px 14px",textAlign:"center"}}>
+        <div style={{fontSize:30,marginBottom:6}}>🌍</div>
+        <div style={{fontWeight:800,fontSize:14,marginBottom:4}}>No businesses listed yet</div>
+        <div style={{fontSize:12,color:"var(--sub)"}}>New verified businesses are added regularly. Check back soon.</div>
+      </div>
+    </div>
+  );
+}
+
+
 // ── DISCOVERY FEED (safe, no IIFEs in JSX) ───────────────────────────────────
 function DiscoveryFeed({listings,userPrefs,saved,recentlyViewed,onOpen,onSave,onImpression,user}){
   if(!listings||listings.length===0) return null;
@@ -4894,26 +4947,26 @@ function DiscoveryFeed({listings,userPrefs,saved,recentlyViewed,onOpen,onSave,on
   const popular    = [...listings]
     .filter(l=>(l.rating||0)>=4||(l.review_count||0)>=3)
     .sort((a,b)=>(b.rating||0)-(a.rating||0)).slice(0,6);
-  const interest   = prefs.interests?.[0]||null;
+  const interest   = (prefs.interests||[]).find(i=>catsForInterests([i]).length>0)||null;
   const catLabel   = {housing:"🏠 Housing",health:"🏥 Health",food:"🍛 Food",
     schools:"🎓 Schools",community:"🌍 Community",medical_tourism:"✈️ Medical Tourism"
   }[interest]||"Based on Your Interests";
   const interested = interest
-    ? listings.filter(l=>(l.cat||l.category)===interest).slice(0,6) : [];
+    ? listings.filter(l=>catsForInterests([interest]).includes(l.cat||l.category)).slice(0,6) : [];
   const savedItems = listings.filter(l=>savedSet.has(l.id)).slice(0,6);
 
   const Sec=({title,items,section})=>{
     if(!items||items.length===0) return null;
     return(
       <div className="section">
-        <div className="sec-title">{title}</div>
-        <div className="cards-row">
+        <div className="sec-head"><div className="sec-title">{title}</div></div>
+        <div className="listing-grid">
           {items.map(item=>(
             <Card key={item.id} item={item}
               saved={savedSet.has(item.id)}
               onSave={()=>onSave(item.id)}
               onOpen={()=>onOpen(item)}
-              onImpression={()=>{ try{onImpression(item.id,section);}catch(e){} }}
+              onImpression={()=>{ try{onImpression(item.id,section);}catch(_e){devWarn("non-fatal:",_e&&_e.message);} }}
             />
           ))}
         </div>
@@ -4996,23 +5049,52 @@ function MainApp({user,onLogout}){
         });
     }
   },[tab]); // group detail view
-  const[listings,setListings]=useState(DATA); // starts with mock, replaced by Supabase
+  const[listings,setListings]=useState([]);
+  const[listingsState,setListingsState]=useState("loading"); // loading | ready | error
+  const[listingsTry,setListingsTry]=useState(0);
   const[qaList,setQaList]=useState(QA);
   const[universities,setUniversities]=useState(UNIVERSITIES); // starts with mock
   const t=T[lang];
 
   // ── LOAD ALL DATA + USER-SPECIFIC STATE ON STARTUP ────────────────────────
+  // ── LISTINGS LOADER — real data only; explicit loading / error / empty states ──
+  useEffect(()=>{
+    let cancelled=false;
+    setListingsState("loading");
+    (async()=>{
+      const{data,error}=await supabase.from("listings").select("*").eq("status","active").order("rating",{ascending:false});
+      if(cancelled) return;
+      if(error){devWarn("listings load failed:",error.message);setListingsState("error");return;}
+      const rows=data||[];
+      // Optional photo fallback from the owning business account. Never blocks the listing.
+      const needImgs=[...new Set(rows.filter(l=>!(Array.isArray(l.images)&&l.images.length>0)&&l.business_account_id).map(l=>l.business_account_id))];
+      const imgMap={};
+      if(needImgs.length>0){
+        try{
+          const{data:accts}=await supabase.from("business_accounts").select("id,images").in("id",needImgs);
+          (accts||[]).forEach(b=>{if(Array.isArray(b.images)&&b.images.length>0) imgMap[b.id]=b.images;});
+        }catch(e){devWarn("photo fallback skipped:",e&&e.message);}
+      }
+      if(cancelled) return;
+      setListings(rows.map(l=>({
+        ...l,
+        cat:l.category,
+        desc:l.description||l.desc||"",
+        rc:l.review_count||0,
+        top:l.top||false,
+        african:l.african_owned||false,
+        icon:l.icon||"🏢",
+        price:l.price||"",
+        verified:l.verified||false,
+        images:(Array.isArray(l.images)&&l.images.length>0)?l.images:(imgMap[l.business_account_id]||[]),
+      })));
+      setListingsState("ready");
+    })();
+    return()=>{cancelled=true;};
+  },[listingsTry]);
+
   useEffect(()=>{
     // Public data — listings, groups, Q&A, universities
-    supabase.from("listings").select("*,business_accounts!business_account_id(images)").eq("status","active").order("rating",{ascending:false})
-      .then(({data})=>{ if(data&&data.length>0) setListings(data.map(l=>{
-        // listings.images is text[], business_accounts.images is jsonb
-        const listingImgs=Array.isArray(l.images)&&l.images.length>0?l.images:[];
-        const baRaw=Array.isArray(l.business_accounts)?l.business_accounts[0]:l.business_accounts;
-        const baImgs=Array.isArray(baRaw?.images)&&baRaw.images.length>0?baRaw.images:[];
-        const finalImgs=listingImgs.length>0?listingImgs:baImgs;
-        return{...l,cat:l.category,rc:l.review_count||0,top:l.top||false,african:l.african_owned||false,icon:l.icon||"🏢",price:l.price||"$$",verified:l.verified||false,images:finalImgs};
-      })); });
 
     if(user?.id){
       // Load requests first, then enrich with quotes separately
@@ -5153,12 +5235,12 @@ function MainApp({user,onLogout}){
     try{return localStorage.getItem("xairod_checklist_dismissed")==="1";}catch(e){return false;}
   });
   const markTelegramJoined=()=>{
-    try{localStorage.setItem("xairod_telegram_joined","1");}catch(e){}
+    try{localStorage.setItem("xairod_telegram_joined","1");}catch(_e){devWarn("non-fatal:",_e&&_e.message);}
     trackEvent("telegram_join_clicked");
     setTelegramClicked(true);
   };
   const dismissChecklist=()=>{
-    try{localStorage.setItem("xairod_checklist_dismissed","1");}catch(e){}
+    try{localStorage.setItem("xairod_checklist_dismissed","1");}catch(_e){devWarn("non-fatal:",_e&&_e.message);}
     setChecklistDismissed(true);
   };
   const firstReviewDone=(()=>{try{return localStorage.getItem("xairod_first_review_done")==="1";}catch(e){return false;}})();
@@ -5227,7 +5309,11 @@ function MainApp({user,onLogout}){
       country:u.country,
     })) : [];
 
-  const allListings = [...(listings.length>0?listings:DATA), ...universityListings];
+  const allListings = [...listings, ...universityListings];
+  const featuredHome = listings.filter(d=>d.top||d.verified).slice(0,4);
+  const healthHome   = listings.filter(d=>d.cat==="health").slice(0,2);
+  const foodHome     = listings.filter(d=>d.cat==="food"&&d.african).slice(0,2);
+  const schoolsHome  = allListings.filter(d=>d.cat==="school").slice(0,2);
 
   const filtered=allListings
     .filter(l=>(cat==="all"||l.cat===cat)&&(srch===""||l.name.toLowerCase().includes(srch.toLowerCase())||(l.desc||"").toLowerCase().includes(srch.toLowerCase())))
@@ -5256,6 +5342,8 @@ function MainApp({user,onLogout}){
                 {planInfo?.icon} {planInfo?.label}
               </div>
             )}
+            <OpportunityRadar user={user} listings={listings} saved={saved} userPrefs={userPrefs}
+              onOpenListing={(item)=>{setDetail(item);trackEvent("business_opened",{listing_id:item.id},user?.id);}}/>
             <NotifBell
               lang={lang}
               onGoToRequests={()=>{
@@ -5304,9 +5392,9 @@ function MainApp({user,onLogout}){
 
             {/* Stats */}
             <div className="stats-row">
-              <div className="stat"><div className="stat-n">{listings.length||DATA.length}+</div><div className="stat-l">Listings</div></div>
-              <div className="stat"><div className="stat-n">{(listings.length||DATA.length)>0?(listings||DATA).filter(d=>d.verified).length:0}+</div><div className="stat-l">Verified</div></div>
-              <div className="stat"><div className="stat-n">5</div><div className="stat-l">Categories</div></div>
+              <div className="stat"><div className="stat-n">{listingsState==="ready"?listings.length+"+":"–"}</div><div className="stat-l">Listings</div></div>
+              <div className="stat"><div className="stat-n">{listingsState==="ready"?listings.filter(d=>d.verified).length+"+":"–"}</div><div className="stat-l">Verified</div></div>
+              <div className="stat"><div className="stat-n">{listingsState==="ready"?new Set(listings.map(d=>d.cat).filter(Boolean)).size:"–"}</div><div className="stat-l">Categories</div></div>
             </div>
 
             {/* Search */}
@@ -5361,6 +5449,10 @@ function MainApp({user,onLogout}){
               </button>
             </div>
 
+            {listingsState==="loading"&&<ListingsSkeleton/>}
+            {listingsState==="error"&&<ListingsError onRetry={()=>setListingsTry(n=>n+1)}/>}
+            {listingsState==="ready"&&listings.length===0&&<ListingsEmpty/>}
+
             {/* ── Personalized Discovery ── */}
             <DiscoveryFeed
               listings={listings}
@@ -5374,56 +5466,64 @@ function MainApp({user,onLogout}){
             />
 
             {/* Featured listings */}
+            {featuredHome.length>0&&(
             <div className="section">
               <div className="sec-head">
                 <div className="sec-title">⭐ Featured</div>
                 <span className="sec-link" onClick={()=>setTab("explore")}>See all</span>
               </div>
               <div className="listing-grid">
-                {(listings.length>0?listings:DATA).filter(d=>d.top||d.verified).slice(0,4).map(item=>(
+                {featuredHome.map(item=>(
                   <Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>
                 ))}
               </div>
             </div>
+            )}
 
             {/* Health section */}
+            {healthHome.length>0&&(
             <div className="section">
               <div className="sec-head">
                 <div className="sec-title">🏥 Health</div>
                 <span className="sec-link" onClick={()=>{setTab("health");}}>Health Assistant →</span>
               </div>
               <div className="listing-grid">
-                {(listings.length>0?listings:DATA).filter(d=>d.cat==="health").slice(0,2).map(item=>(
+                {healthHome.map(item=>(
                   <Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>
                 ))}
               </div>
             </div>
+            )}
 
             {/* African Food */}
+            {foodHome.length>0&&(
             <div className="section">
               <div className="sec-head">
                 <div className="sec-title">🍲 African Food</div>
                 <span className="sec-link" onClick={()=>{setTab("explore");setCat("food");}}>See all</span>
               </div>
               <div className="listing-grid">
-                {(listings.length>0?listings:DATA).filter(d=>d.cat==="food"&&d.african).slice(0,2).map(item=>(
+                {foodHome.map(item=>(
                   <Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>
                 ))}
               </div>
             </div>
+            )}
 
             {/* Schools & Admission */}
+            {schoolsHome.length>0&&(
             <div className="section">
               <div className="sec-head">
                 <div className="sec-title">🎓 Schools & Admission</div>
                 <span className="sec-link" onClick={()=>{setTab("explore");setCat("school");}}>See all</span>
               </div>
               <div className="listing-grid">
-                {(listings.length>0?[...listings,...universities.filter(u=>u.visible!==false).map(u=>({id:"uni-"+u.id,name:u.name,cat:"school",subcat:"university",city:u.city||"Cairo",desc:u.description||"",rating:u.rating||0,rc:u.review_count||0,top:u.featured||false,verified:true,icon:"🏛️",images:[]}))]:DATA).filter(d=>d.cat==="school").slice(0,2).map(item=>(
+                {schoolsHome.map(item=>(
                   <Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>
                 ))}
               </div>
             </div>
+            )}
 
             {/* Avoid scams banner */}
             <div className="section">
@@ -5477,7 +5577,7 @@ function MainApp({user,onLogout}){
             {viewMode==="list"
               ?<div className="listing-grid" style={{padding:"0 17px"}}>
                 {filtered.length===0
-                  ?<div className="empty"><div className="big">🔍</div><p>No results found.</p></div>
+                  ?(listingsState==="loading"?<ListingsSkeleton/>:listingsState==="error"?<ListingsError onRetry={()=>setListingsTry(n=>n+1)}/>:<div className="empty"><div className="big">🔍</div><p>{listings.length===0?"No businesses listed yet.":"No results found."}</p></div>)
                   :filtered.map(item=><Card key={item.id} item={item} onOpen={onOpen} saved={saved.has(item.id)} onSave={toggleSave}/>)
                 }
               </div>
@@ -5605,7 +5705,7 @@ function MainApp({user,onLogout}){
                 <button className={`toggle ${af1st?"on":"off"}`} onClick={()=>setAf1st(!af1st)}/>
               </div>
               <div className="settings-title" style={{marginTop:14}}>Account</div>
-              {[["📝","Edit Profile",()=>setEditProfileOpen(true)],["🌍","Change City",()=>setEditProfileOpen(true)],["✈️","Join Telegram Community",()=>{markTelegramJoined();window.open(TELEGRAM_URL,"_blank");}],["📤",t.shareBtn,async()=>{if(navigator.share){try{await navigator.share({title:t.shareTitle,text:t.shareText,url:"https://xairod.com"});}catch(e){}}else{try{await navigator.clipboard.writeText("https://xairod.com");alert("xairod.com copied to clipboard!");}catch(e){window.open("https://wa.me/?text="+encodeURIComponent(t.shareText+" https://xairod.com"),"_blank");}}}],["💬","Send Feedback",()=>{
+              {[["📝","Edit Profile",()=>setEditProfileOpen(true)],["🌍","Change City",()=>setEditProfileOpen(true)],["✈️","Join Telegram Community",()=>{markTelegramJoined();window.open(TELEGRAM_URL,"_blank");}],["📤",t.shareBtn,async()=>{if(navigator.share){try{await navigator.share({title:t.shareTitle,text:t.shareText,url:"https://xairod.com"});}catch(_e){devWarn("non-fatal:",_e&&_e.message);}}else{try{await navigator.clipboard.writeText("https://xairod.com");alert("xairod.com copied to clipboard!");}catch(e){window.open("https://wa.me/?text="+encodeURIComponent(t.shareText+" https://xairod.com"),"_blank");}}}],["💬","Send Feedback",()=>{
                   const subject=encodeURIComponent("Xairod App Feedback");
                   const body=encodeURIComponent("Hi Xairod team,\n\nHere is my feedback:\n\n");
                   window.open("mailto:hello@xairod.com?subject="+subject+"&body="+body,"_blank");
